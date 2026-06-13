@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import ddb, { TABLE_NAME } from "@/lib/db";
-import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, UpdateCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { v4 as uuid } from "uuid";
 import { isValidDateString } from "@/lib/billing";
 
 interface ScootyAssignment {
@@ -40,7 +41,16 @@ export async function POST(
     scooty_label?: string;
     swap_date?: string;
     note?: string;
+    start_kms?: number;
   };
+
+  const startKms = typeof body.start_kms === "number" ? body.start_kms : undefined;
+  if (startKms !== undefined && (typeof startKms !== "number" || startKms < 0)) {
+    return NextResponse.json(
+      { error: "start_kms must be a non-negative number" },
+      { status: 400 }
+    );
+  }
 
   let customerId = (body.customer_id || "").trim();
   if (!customerId) {
@@ -99,14 +109,51 @@ export async function POST(
   const note = (body.note || "").trim();
   scooties.push({ label: newLabel, from: swapDate, note: note || undefined });
 
-  await ddb.send(
-    new UpdateCommand({
-      TableName: TABLE_NAME,
-      Key: { PK: `CUSTOMER#${customerId}`, SK: `RENTAL#${rentalId}` },
-      UpdateExpression: "SET scooties = :s, scootyLabel = :label",
-      ExpressionAttributeValues: { ":s": scooties, ":label": newLabel },
-    })
-  );
+  const now = new Date().toISOString();
+
+  if (startKms !== undefined) {
+    const kmsLogId = uuid();
+    await ddb.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: TABLE_NAME,
+              Key: { PK: `CUSTOMER#${customerId}`, SK: `RENTAL#${rentalId}` },
+              UpdateExpression: "SET scooties = :s, scootyLabel = :label",
+              ExpressionAttributeValues: { ":s": scooties, ":label": newLabel },
+            },
+          },
+          {
+            Put: {
+              TableName: TABLE_NAME,
+              Item: {
+                PK: `CUSTOMER#${customerId}`,
+                SK: `KMSLOG#${rentalId}#${swapDate}#${kmsLogId}`,
+                kmsLogId,
+                rentalId,
+                customerId,
+                scootyLabel: newLabel,
+                kms: startKms,
+                date: swapDate,
+                note: `Swap starting reading${note ? ` (${note})` : ""}`,
+                createdAt: now,
+              },
+            },
+          },
+        ],
+      })
+    );
+  } else {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: TABLE_NAME,
+        Key: { PK: `CUSTOMER#${customerId}`, SK: `RENTAL#${rentalId}` },
+        UpdateExpression: "SET scooties = :s, scootyLabel = :label",
+        ExpressionAttributeValues: { ":s": scooties, ":label": newLabel },
+      })
+    );
+  }
 
   return NextResponse.json({ ok: true, scooties });
 }

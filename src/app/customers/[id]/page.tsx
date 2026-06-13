@@ -1,10 +1,10 @@
 "use client";
 
-import { use, useEffect, useState, useCallback } from "react";
+import { use, useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatINR, RATE_UNITS, RateUnit } from "@/lib/billing";
-import { ID_TYPES, IdType, ID_TYPE_LABELS } from "@/lib/idTypes";
+import { ID_TYPES, IdType, ID_TYPE_LABELS, KmsLog, LocationLog } from "@/lib/idTypes";
 
 interface AccountOption {
   id: string;
@@ -68,7 +68,9 @@ interface RentalView {
   payments: Payment[];
   refunds: Refund[];
   deposits: Deposit[];
+  kmsLogs: Omit<KmsLog, "customerId">[];
   scooties: { label: string; from: string; note: string | null }[];
+  locationLogs?: LocationLog[];
   balances: {
     daysBilled: number;
     totalBilled: number;
@@ -100,6 +102,42 @@ interface CustomerDetail {
   created_at: string;
   photos: Photo[];
   rentals: RentalView[];
+}
+
+function useLeaflet() {
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if ((window as any).L) {
+      setLoaded(true);
+      return;
+    }
+
+    const existingScript = document.getElementById("leaflet-js");
+    if (existingScript) {
+      const handleLoad = () => setLoaded(true);
+      existingScript.addEventListener("load", handleLoad);
+      return () => {
+        existingScript.removeEventListener("load", handleLoad);
+      };
+    }
+
+    // Load CSS
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = "/leaflet.css";
+    document.head.appendChild(link);
+
+    // Load JS
+    const script = document.createElement("script");
+    script.id = "leaflet-js";
+    script.src = "/leaflet.js";
+    script.onload = () => setLoaded(true);
+    document.body.appendChild(script);
+  }, []);
+
+  return loaded;
 }
 
 // Turn a saved house location (a pasted Maps URL, or coordinates / free text)
@@ -540,6 +578,7 @@ function NewRentalForm({
   const today = new Date().toISOString().slice(0, 10);
   const [scootyLabel, setScootyLabel] = useState("");
   const [startDate, setStartDate] = useState(today);
+  const [startKms, setStartKms] = useState("");
   const [rate, setRate] = useState("");
   const [rateUnit, setRateUnit] = useState<RateUnit>("day");
   const [securityDeposit, setSecurityDeposit] = useState("");
@@ -587,6 +626,7 @@ function NewRentalForm({
           deposit_collected: collectedNow,
           deposit_account: collectedNow > 0 ? selectedDepositAccount : undefined,
           advance_payment: hasAdvance ? parseFloat(advancePayment) : 0,
+          start_kms: startKms ? parseInt(startKms, 10) : undefined,
           advance_account: hasAdvance ? selectedAccount : undefined,
           advance_screenshot_filename: includeScreenshot
             ? advanceScreenshot!.name
@@ -637,6 +677,18 @@ function NewRentalForm({
             required
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          />
+        </Field>
+        <Field label="Odometer reading at start (km) *">
+          <input
+            type="number"
+            min="0"
+            step="1"
+            required
+            value={startKms}
+            onChange={(e) => setStartKms(e.target.value)}
+            placeholder="e.g. 15000"
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
           />
         </Field>
@@ -824,12 +876,100 @@ function RentalCard({
   accounts: AccountOption[];
   onChange: () => void;
 }) {
-  const [showPayForm, setShowPayForm] = useState(false);
-  const [showRefundForm, setShowRefundForm] = useState(false);
-  const [showSwapForm, setShowSwapForm] = useState(false);
-  const [showDepositForm, setShowDepositForm] = useState(false);
+  type FormKind = "pay" | "refund" | "deposit" | "swap" | "kms" | null;
+  const [activeForm, setActiveForm] = useState<FormKind>(null);
+  const toggleForm = (kind: FormKind) => setActiveForm((v) => (v === kind ? null : kind));
+  const [pulling, setPulling] = useState(false);
   const isActive = rental.balances.status === "active";
+
+  const leafletLoaded = useLeaflet();
+  const mapRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (!leafletLoaded || !rental.locationLogs || rental.locationLogs.length === 0) return;
+    const L = (window as any).L;
+    if (!L) return;
+
+    const containerId = `map-${rental.id}`;
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    // Initialize map if not yet done
+    if (!mapRef.current) {
+      const latestLog = rental.locationLogs[0];
+      const map = L.map(containerId).setView([latestLog.latitude, latestLog.longitude], 14);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '© OpenStreetMap contributors',
+      }).addTo(map);
+      mapRef.current = map;
+    }
+
+    // Clear existing transient markers/polylines from map
+    mapRef.current.eachLayer((layer: any) => {
+      if (layer instanceof L.Marker || layer instanceof L.Polyline) {
+        mapRef.current.removeLayer(layer);
+      }
+    });
+
+    const sortedLogs = [...rental.locationLogs].sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+
+    const latlngs = sortedLogs.map((log) => [log.latitude, log.longitude]);
+
+    // Draw historical polyline path
+    if (latlngs.length > 1) {
+      L.polyline(latlngs, { color: "#0ea5e9", weight: 3, opacity: 0.8 }).addTo(mapRef.current);
+    }
+
+    // Add markers with custom style DivIcons (pulse animations for current, simple dot for historical)
+    sortedLogs.forEach((log, idx) => {
+      const isLatest = idx === sortedLogs.length - 1;
+      const marker = L.marker([log.latitude, log.longitude], {
+        icon: L.divIcon({
+          className: "custom-leaflet-div-icon",
+          html: isLatest
+            ? `<div style="position: relative; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px;">
+                <span style="position: absolute; width: 100%; height: 100%; border-radius: 50%; background-color: #38bdf8; opacity: 0.75; transform: scale(1); animation: leaflet-ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;"></span>
+                <span style="position: relative; width: 12px; height: 12px; border-radius: 50%; background-color: #0284c7; border: 2px solid white;"></span>
+               </div>`
+            : `<div style="width: 8px; height: 8px; border-radius: 50%; background-color: #64748b; border: 1.5px solid white;"></div>`,
+          iconSize: isLatest ? [24, 24] : [8, 8],
+          iconAnchor: isLatest ? [12, 12] : [4, 4],
+        }),
+      }).addTo(mapRef.current);
+
+      marker.bindPopup(
+        `<div style="font-family: sans-serif; font-size: 12px; color: #1e293b;">` +
+        `<strong>${isLatest ? "Current Location" : "History Pin"}</strong><br/>` +
+        `Time: ${new Date(log.timestamp).toLocaleTimeString()}<br/>` +
+        `Date: ${new Date(log.timestamp).toLocaleDateString()}<br/>` +
+        `${log.batteryLevel !== undefined ? "Battery: " + Math.round(log.batteryLevel * 100) + "%" : ""}` +
+        `</div>`
+      );
+    });
+
+    // Adjust view to fit all coords in history
+    if (latlngs.length > 1) {
+      mapRef.current.fitBounds(L.latLngBounds(latlngs), { padding: [30, 30] });
+    } else if (latlngs.length === 1) {
+      mapRef.current.setView(latlngs[0], 14);
+    }
+  }, [leafletLoaded, rental.locationLogs, rental.id]);
+
+  // Cleanup map on final component unmount
+  useEffect(() => {
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
+    };
+  }, []);
   const { coverageStatus, daysRemaining, paidThroughDate } = rental.balances;
+
+  const latestKms = rental.kmsLogs && rental.kmsLogs.length > 0 ? rental.kmsLogs[0].kms : null;
+  const odometerValue = latestKms !== null ? `${latestKms.toLocaleString("en-IN")} km` : "—";
 
   const totalRefunded = rental.refunds.reduce((s, r) => s + r.amount, 0);
   // The deposit may be collected in installments — sum what's actually in.
@@ -1006,42 +1146,79 @@ function RentalCard({
         {isActive && <CoverageBadge status={coverageStatus} days={daysRemaining} />}
       </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+      <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
         <Stat
           label="Paid through"
           value={paidThroughDate || "—"}
         />
         <Stat label="Days billed" value={String(rental.balances.daysBilled)} />
         <Stat label="Paid" value={formatINR(rental.balances.totalPaid)} />
+        <Stat label="Odometer" value={odometerValue} />
       </div>
 
       <div className="mt-3 flex gap-2 flex-wrap">
         <button
-          onClick={() => setShowPayForm((v) => !v)}
+          onClick={() => toggleForm("pay")}
           className="text-sm bg-white border border-emerald-300 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-50"
         >
-          {showPayForm ? "Cancel" : "+ Record Payment"}
-        </button>
-        {rental.securityDeposit > 0 && (
-          <button
-            onClick={() => setShowRefundForm((v) => !v)}
-            className="text-sm bg-white border border-amber-300 text-amber-700 px-3 py-1.5 rounded-lg hover:bg-amber-50"
-          >
-            {showRefundForm ? "Cancel" : "+ Refund Deposit"}
-          </button>
-        )}
-        <button
-          onClick={() => setShowDepositForm((v) => !v)}
-          className="text-sm bg-white border border-sky-300 text-sky-700 px-3 py-1.5 rounded-lg hover:bg-sky-50"
-        >
-          {showDepositForm ? "Cancel" : "Edit deposit"}
+          {activeForm === "pay" ? "Cancel" : "+ Record Payment"}
         </button>
         {isActive && (
           <button
-            onClick={() => setShowSwapForm((v) => !v)}
+            onClick={() => toggleForm("kms")}
+            className="text-sm bg-white border border-orange-300 text-orange-700 px-3 py-1.5 rounded-lg hover:bg-orange-50"
+          >
+            {activeForm === "kms" ? "Cancel" : "+ Log KMS"}
+          </button>
+        )}
+        {rental.securityDeposit > 0 && (
+          <button
+            onClick={() => toggleForm("refund")}
+            className="text-sm bg-white border border-amber-300 text-amber-700 px-3 py-1.5 rounded-lg hover:bg-amber-50"
+          >
+            {activeForm === "refund" ? "Cancel" : "+ Refund Deposit"}
+          </button>
+        )}
+        <button
+          onClick={() => toggleForm("deposit")}
+          className="text-sm bg-white border border-sky-300 text-sky-700 px-3 py-1.5 rounded-lg hover:bg-sky-50"
+        >
+          {activeForm === "deposit" ? "Cancel" : "Edit deposit"}
+        </button>
+        {isActive && (
+          <button
+            onClick={() => toggleForm("swap")}
             className="text-sm bg-white border border-sky-300 text-sky-700 px-3 py-1.5 rounded-lg hover:bg-sky-50"
           >
-            {showSwapForm ? "Cancel" : "Swap scooty"}
+            {activeForm === "swap" ? "Cancel" : "Swap scooty"}
+          </button>
+        )}
+        {isActive && (
+          <button
+            disabled={pulling}
+            onClick={async () => {
+              setPulling(true);
+              try {
+                const res = await fetch(`/api/rentals/${rental.id}/pull`, {
+                  method: "POST",
+                });
+                if (!res.ok) throw new Error("Failed to send pull command");
+                
+                // Poll for updates in the background to automatically refresh the location list
+                setTimeout(onChange, 2000);
+                setTimeout(onChange, 4000);
+                setTimeout(() => {
+                  onChange();
+                  setPulling(false);
+                }, 6000);
+              } catch (err: any) {
+                alert("Pull error: " + err.message);
+                setPulling(false);
+              }
+            }}
+            className="text-sm bg-white border border-purple-300 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-50 disabled:opacity-50"
+          >
+            {pulling ? "Pulling..." : "Pull Location"}
           </button>
         )}
         {isActive && (
@@ -1077,20 +1254,20 @@ function RentalCard({
         </button>
       </div>
 
-      {showPayForm && (
+      {activeForm === "pay" && (
         <CollectForm
           rentalId={rental.id}
           customerId={customerId}
           accounts={accounts}
           depositOutstanding={depositOutstanding}
           onSaved={() => {
-            setShowPayForm(false);
+            setActiveForm(null);
             onChange();
           }}
         />
       )}
 
-      {showRefundForm && (
+      {activeForm === "refund" && (
         <RefundForm
           rentalId={rental.id}
           customerId={customerId}
@@ -1098,25 +1275,25 @@ function RentalCard({
           defaultAmount={remainingRefundable}
           defaultAccount={rental.deposits[0]?.account || ""}
           onSaved={() => {
-            setShowRefundForm(false);
+            setActiveForm(null);
             onChange();
           }}
         />
       )}
 
-      {showSwapForm && (
+      {activeForm === "swap" && (
         <SwapForm
           rentalId={rental.id}
           customerId={customerId}
           currentLabel={rental.scootyLabel}
           onSaved={() => {
-            setShowSwapForm(false);
+            setActiveForm(null);
             onChange();
           }}
         />
       )}
 
-      {showDepositForm && (
+      {activeForm === "deposit" && (
         <DepositEditForm
           rentalId={rental.id}
           customerId={customerId}
@@ -1124,10 +1301,115 @@ function RentalCard({
           currentRefundable={rental.refundableDeposit}
           collected={depositCollected}
           onSaved={() => {
-            setShowDepositForm(false);
+            setActiveForm(null);
             onChange();
           }}
         />
+      )}
+
+      {activeForm === "kms" && (
+        <KmsForm
+          rentalId={rental.id}
+          customerId={customerId}
+          onSaved={() => {
+            setActiveForm(null);
+            onChange();
+          }}
+          onCancel={() => setActiveForm(null)}
+        />
+      )}
+
+      {rental.kmsLogs && rental.kmsLogs.length > 0 && (
+        <div className="mt-4 border-t border-gray-100 pt-3">
+          <div className="text-xs uppercase tracking-wide text-gray-500 mb-2">
+            Odometer History
+          </div>
+          <ul className="space-y-1 text-sm text-gray-700 max-h-36 overflow-y-auto font-mono">
+            {rental.kmsLogs.map((log) => (
+              <li key={log.id} className="flex justify-between py-1 border-b border-gray-50 last:border-0">
+                <span className="min-w-0">
+                  <span className="font-semibold text-gray-800">{log.kms.toLocaleString("en-IN")} km</span>
+                  <span className="text-gray-400 mx-2">·</span>
+                  <span className="text-gray-500">{log.date}</span>
+                  <span className="ml-2 inline-block bg-gray-100 text-gray-600 text-[10px] px-1.5 py-0.5 rounded font-medium">
+                    {log.scootyLabel}
+                  </span>
+                  {log.note ? ` · ${log.note}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {rental.locationLogs && rental.locationLogs.length > 0 && (
+        <div className="mt-4 border-t border-gray-100 pt-3">
+          <style>{`
+            @keyframes leaflet-ping {
+              0% {
+                transform: scale(0.5);
+                opacity: 1;
+              }
+              100% {
+                transform: scale(2.5);
+                opacity: 0;
+              }
+            }
+          `}</style>
+          <div className="text-xs uppercase tracking-wide text-gray-500 mb-2">
+            Driver Location History
+          </div>
+          {/* Leaflet map container */}
+          <div
+            id={`map-${rental.id}`}
+            className="h-64 w-full rounded-xl mt-1 mb-3 overflow-hidden shadow-inner border border-gray-200 z-0"
+          />
+          <ul className="space-y-1 text-sm text-gray-700 max-h-40 overflow-y-auto font-mono">
+            {rental.locationLogs.map((log: any) => (
+              <li
+                key={log.id}
+                onClick={() => {
+                  if (mapRef.current) {
+                    mapRef.current.setView([log.latitude, log.longitude], 16);
+                  }
+                }}
+                className="flex justify-between py-1.5 border-b border-gray-50 last:border-0 hover:bg-slate-50 cursor-pointer px-2 rounded transition"
+                title="Click to focus map here"
+              >
+                <span className="min-w-0 flex items-center">
+                  <span className="font-semibold text-sky-600 hover:underline">
+                    {log.latitude.toFixed(6)}, {log.longitude.toFixed(6)}
+                  </span>
+                  <span className="text-gray-400 mx-2">·</span>
+                  <span className="text-gray-500 text-xs">
+                    {new Date(log.timestamp).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                    })}{" "}
+                    ({new Date(log.timestamp).toLocaleDateString()})
+                  </span>
+                  {log.batteryLevel !== undefined && (
+                    <>
+                      <span className="text-gray-400 mx-2">·</span>
+                      <span className="text-gray-500 text-[10px]">🔋 {Math.round(log.batteryLevel * 100)}%</span>
+                    </>
+                  )}
+                </span>
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${log.latitude},${log.longitude}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-slate-400 hover:text-sky-600 transition ml-2 text-xs flex items-center"
+                  title="Open in Google Maps"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  🗺️ Maps
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {txUnits.length > 0 && (
@@ -1795,6 +2077,7 @@ function SwapForm({
   const [label, setLabel] = useState("");
   const [swapDate, setSwapDate] = useState(today);
   const [note, setNote] = useState("");
+  const [startKms, setStartKms] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1815,6 +2098,7 @@ function SwapForm({
           scooty_label: label.trim(),
           swap_date: swapDate,
           note: note.trim() || undefined,
+          start_kms: startKms ? parseInt(startKms, 10) : undefined,
         }),
       });
       if (!res.ok) {
@@ -1841,7 +2125,7 @@ function SwapForm({
           {error}
         </div>
       )}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
         <Field label="New scooty *">
           <input
             value={label}
@@ -1857,6 +2141,18 @@ function SwapForm({
             required
             value={swapDate}
             onChange={(e) => setSwapDate(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          />
+        </Field>
+        <Field label="Odometer reading (km) *">
+          <input
+            type="number"
+            min="0"
+            step="1"
+            required
+            value={startKms}
+            onChange={(e) => setStartKms(e.target.value)}
+            placeholder="e.g. 15000"
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
           />
         </Field>
@@ -1876,6 +2172,120 @@ function SwapForm({
       >
         {saving ? "Saving…" : "Record swap"}
       </button>
+    </form>
+  );
+}
+
+function KmsForm({
+  rentalId,
+  customerId,
+  onSaved,
+  onCancel,
+}: {
+  rentalId: string;
+  customerId: string;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [kms, setKms] = useState("");
+  const [date, setDate] = useState(today);
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const kmsNum = parseInt(kms, 10);
+    if (isNaN(kmsNum) || kmsNum < 0) {
+      setError("Enter a non-negative odometer reading.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/rentals/${rentalId}/kms`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customer_id: customerId,
+          kms: kmsNum,
+          date,
+          note: note.trim() || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setError(body.error || "Failed to log odometer.");
+        return;
+      }
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form
+      onSubmit={submit}
+      className="mt-3 bg-orange-50/60 border border-orange-200 rounded-lg p-3 space-y-2"
+    >
+      <div className="text-xs font-semibold text-orange-800">
+        Log Odometer Reading (km)
+      </div>
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-800 text-xs rounded-lg p-2">
+          {error}
+        </div>
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <Field label="Odometer (km) *">
+          <input
+            type="number"
+            min="0"
+            step="1"
+            required
+            value={kms}
+            onChange={(e) => setKms(e.target.value)}
+            placeholder="e.g. 15420"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          />
+        </Field>
+        <Field label="Date *">
+          <input
+            type="date"
+            required
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          />
+        </Field>
+        <Field label="Note">
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="e.g. regular checkup"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          />
+        </Field>
+      </div>
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={saving}
+          className="bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-700 disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Record Odometer"}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={saving}
+          className="text-sm text-gray-600 hover:text-gray-800 px-4 py-2"
+        >
+          Cancel
+        </button>
+      </div>
     </form>
   );
 }

@@ -216,6 +216,43 @@ export async function GET(
     refundsByRental.set(r.rentalId, list);
   }
 
+  const kmsLogItems = items.filter(
+    (i) => typeof i.SK === "string" && i.SK.startsWith("KMSLOG#")
+  );
+  const kmsLogs = kmsLogItems.map((k) => ({
+    id: (k.kmsLogId as string) || (k.SK as string).split("#")[2] || "",
+    rentalId: k.rentalId as string,
+    scootyLabel: (k.scootyLabel as string) || "",
+    kms: (k.kms as number) || 0,
+    date: k.date as string,
+    note: (k.note as string) || null,
+    createdAt: k.createdAt as string,
+  }));
+  const kmsLogsByRental = new Map<string, any[]>();
+  for (const k of kmsLogs) {
+    const list = kmsLogsByRental.get(k.rentalId) || [];
+    list.push(k);
+    kmsLogsByRental.set(k.rentalId, list);
+  }
+  const locationLogItems = items.filter(
+    (i) => typeof i.SK === "string" && i.SK.startsWith("LOCATION#")
+  );
+  const locationLogs = locationLogItems.map((l) => ({
+    id: (l.SK as string).split("#")[2] || (l.SK as string).split("#")[1] || "",
+    rentalId: l.rentalId as string,
+    latitude: l.latitude as number,
+    longitude: l.longitude as number,
+    batteryLevel: l.batteryLevel as number | undefined,
+    timestamp: l.timestamp as string,
+    createdAt: l.createdAt as string,
+  }));
+  const locationsByRental = new Map<string, any[]>();
+  for (const l of locationLogs) {
+    const list = locationsByRental.get(l.rentalId) || [];
+    list.push(l);
+    locationsByRental.set(l.rentalId, list);
+  }
+
   const rentals = rentalItems
     .map((r) => {
       const rental: Rental = {
@@ -241,6 +278,12 @@ export async function GET(
       const deposits = (depositsByRental.get(rental.id) || []).sort((a, b) =>
         a.date < b.date ? 1 : a.date > b.date ? -1 : 0
       );
+      const kmsLogs = (kmsLogsByRental.get(rental.id) || []).sort((a, b) =>
+        a.createdAt < b.createdAt ? 1 : -1
+      );
+      const locationLogs = (locationsByRental.get(rental.id) || []).sort((a, b) =>
+        a.timestamp < b.timestamp ? 1 : -1
+      );
       // Scooty assignment history — synthesise the first entry from the legacy
       // single label for rentals created before swaps were tracked.
       const scooties =
@@ -258,7 +301,7 @@ export async function GET(
               },
             ];
       const balances = computeRentalBalances(rental, payments);
-      return { ...rental, payments, refunds, deposits, scooties, balances };
+      return { ...rental, payments, refunds, deposits, scooties, balances, kmsLogs, locationLogs };
     })
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 
