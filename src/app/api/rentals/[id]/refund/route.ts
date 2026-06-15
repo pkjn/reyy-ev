@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import ddb, { TABLE_NAME } from "@/lib/db";
-import { GetCommand, PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { v4 as uuid } from "uuid";
 import { isValidDateString } from "@/lib/billing";
 import { getUploadUrl } from "@/lib/s3";
@@ -82,48 +82,10 @@ export async function POST(
   const accountName = accountRes.Item.name as string;
   const customerName = (rentalRes.Item.customerName as string) || undefined;
 
-  // You can't refund money you never received: cap the refund at the deposit
-  // actually collected so far, net of what's already been refunded. (The
-  // deposit may have been collected in installments — sum them all.)
-  const [depositsRes, refundsRes] = await Promise.all([
-    ddb.send(
-      new QueryCommand({
-        TableName: TABLE_NAME,
-        KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
-        ExpressionAttributeValues: {
-          ":pk": `CUSTOMER#${customerId}`,
-          ":sk": `DEPOSIT#${rentalId}`,
-        },
-      })
-    ),
-    ddb.send(
-      new QueryCommand({
-        TableName: TABLE_NAME,
-        KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
-        ExpressionAttributeValues: {
-          ":pk": `CUSTOMER#${customerId}`,
-          ":sk": `DEPOSITREFUND#${rentalId}#`,
-        },
-      })
-    ),
-  ]);
-  const collected = (depositsRes.Items || []).reduce(
-    (s, d) => s + ((d.amount as number) || 0),
-    0
-  );
-  const alreadyRefunded = (refundsRes.Items || []).reduce(
-    (s, r) => s + ((r.amount as number) || 0),
-    0
-  );
-  const refundable = collected - alreadyRefunded;
-  if (body.amount > refundable) {
-    return NextResponse.json(
-      {
-        error: `Cannot refund ₹${body.amount}. Only ₹${refundable} is available (₹${collected} collected, ₹${alreadyRefunded} already refunded).`,
-      },
-      { status: 400 }
-    );
-  }
+  // This is a free-form payout back to the customer — a full-and-final
+  // settlement can return more than the deposit (e.g. the deposit plus unused
+  // prepaid rent), so the amount is intentionally uncapped. The operator owns
+  // the figure; it's just recorded as a debit on the chosen account.
 
   const refundId = uuid();
   const now = new Date().toISOString();

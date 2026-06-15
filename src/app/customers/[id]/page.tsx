@@ -1027,7 +1027,7 @@ function RentalCard({
             onClick={() => setShowRefundForm((v) => !v)}
             className="text-sm bg-white border border-amber-300 text-amber-700 px-3 py-1.5 rounded-lg hover:bg-amber-50"
           >
-            {showRefundForm ? "Cancel" : "+ Refund Deposit"}
+            {showRefundForm ? "Cancel" : "+ Refund / Settlement"}
           </button>
         )}
         <button
@@ -1552,6 +1552,7 @@ function RefundForm({
   const [note, setNote] = useState("");
   const [screenshot, setScreenshot] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Default to the deposit's account, then any account.
   const selectedAccount = account || defaultAccount || accounts[0]?.id || "";
@@ -1559,6 +1560,7 @@ function RefundForm({
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setError(null);
     try {
       const res = await fetch(`/api/rentals/${rentalId}/refund`, {
         method: "POST",
@@ -1573,9 +1575,18 @@ function RefundForm({
           screenshot_type: screenshot?.type,
         }),
       });
-      const json = (await res.json()) as {
+      const json = (await res.json().catch(() => ({}))) as {
         screenshot_upload_url?: string | null;
+        error?: string;
       };
+      // The refund can be rejected server-side (e.g. amount exceeds the
+      // deposit actually collected). Surface it instead of closing the form as
+      // if it saved — otherwise the refund silently never lands in the account
+      // ledger.
+      if (!res.ok) {
+        setError(json.error || "Could not save the refund");
+        return;
+      }
       if (screenshot && json.screenshot_upload_url) {
         await fetch(json.screenshot_upload_url, {
           method: "PUT",
@@ -1595,7 +1606,7 @@ function RefundForm({
       className="mt-3 bg-amber-50/60 border border-amber-200 rounded-lg p-3 space-y-2"
     >
       <div className="text-xs font-semibold text-amber-800">
-        Refund deposit (money out)
+        Refund / Settlement (money out)
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
         <Field label="Amount (₹) *">
@@ -1658,6 +1669,7 @@ function RefundForm({
           {saving ? "Saving…" : "Refund"}
         </button>
       </div>
+      {error && <div className="text-xs text-red-600">{error}</div>}
     </form>
   );
 }
