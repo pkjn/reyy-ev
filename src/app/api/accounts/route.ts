@@ -47,6 +47,9 @@ export async function GET() {
       id: a.accountId as string,
       name: a.name as string,
       created_at: a.createdAt as string,
+      // Non-cash accounts (credits/adjustments) track rent waived rather than
+      // real money held, so they're excluded from the cash total on the client.
+      non_cash: a.nonCash === true,
       balance: await computeBalance(a.accountId as string),
     }))
   );
@@ -55,11 +58,12 @@ export async function GET() {
 
 // POST /api/accounts — create a named account (Surbhi, Rajiv, bank, …).
 export async function POST(req: Request) {
-  const body = (await req.json()) as { name?: string };
+  const body = (await req.json()) as { name?: string; non_cash?: boolean };
   const name = (body.name || "").trim();
   if (!name) {
     return NextResponse.json({ error: "name is required" }, { status: 400 });
   }
+  const nonCash = body.non_cash === true;
 
   const id = uuid();
   const now = new Date().toISOString();
@@ -75,10 +79,15 @@ export async function POST(req: Request) {
         GSI1SK: name.toLowerCase(),
         accountId: id,
         name,
+        // Only stamped when true; undefined is stripped by removeUndefinedValues.
+        nonCash: nonCash || undefined,
         createdAt: now,
       },
     })
   );
 
-  return NextResponse.json({ id, name, created_at: now }, { status: 201 });
+  return NextResponse.json(
+    { id, name, non_cash: nonCash, created_at: now },
+    { status: 201 }
+  );
 }
