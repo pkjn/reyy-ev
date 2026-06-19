@@ -7,18 +7,13 @@
     "icon": "./assets/images/icon.png",
     "scheme": "reyyev",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/images/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#059669"
-    },
+
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundColor": "#ffffff"
       },
       "package": "in.reyyev.driver",
@@ -52,7 +47,7 @@
       "typedRoutes": true
     },
     "extra": {
-      "API_BASE_URL": "http://172.30.30.118:3000"
+      "API_BASE_URL": "http://192.168.1.18:3000"
     }
   }
 }
