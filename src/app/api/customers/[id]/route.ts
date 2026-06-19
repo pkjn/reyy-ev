@@ -228,7 +228,7 @@ export async function GET(
     note: (k.note as string) || null,
     createdAt: k.createdAt as string,
   }));
-  const kmsLogsByRental = new Map<string, any[]>();
+  const kmsLogsByRental = new Map<string, typeof kmsLogs>();
   for (const k of kmsLogs) {
     const list = kmsLogsByRental.get(k.rentalId) || [];
     list.push(k);
@@ -246,7 +246,7 @@ export async function GET(
     timestamp: l.timestamp as string,
     createdAt: l.createdAt as string,
   }));
-  const locationsByRental = new Map<string, any[]>();
+  const locationsByRental = new Map<string, typeof locationLogs>();
   for (const l of locationLogs) {
     const list = locationsByRental.get(l.rentalId) || [];
     list.push(l);
@@ -311,6 +311,32 @@ export async function GET(
       ? [profile.phone as string]
       : [];
 
+  // Live tracker: look for LOCATION#*#LATEST rows for the active rental.
+  const activeRental = rentalItems.find((r) => !r.endDate);
+  let liveTracker = null;
+  if (activeRental) {
+    const activeRentalId = activeRental.rentalId as string;
+    const trackerItem = items.find(
+      (i) =>
+        typeof i.SK === "string" &&
+        i.SK === `LOCATION#${activeRentalId}#LATEST`
+    );
+    if (trackerItem) {
+      const capturedAt = trackerItem.capturedAt as string;
+      const secondsAgo = Math.round(
+        (Date.now() - new Date(capturedAt).getTime()) / 1000
+      );
+      liveTracker = {
+        lat: trackerItem.lat,
+        lng: trackerItem.lng,
+        battery: trackerItem.batteryLevel ?? null,
+        captured_at: capturedAt,
+        received_at: trackerItem.receivedAt,
+        seconds_ago: secondsAgo,
+      };
+    }
+  }
+
   return NextResponse.json({
     id: profile.customerId,
     name: profile.name,
@@ -322,6 +348,8 @@ export async function GET(
     created_at: profile.createdAt,
     photos,
     rentals,
+    driver_password_set: !!profile.driverPasswordHash,
+    live_tracker: liveTracker,
   });
 }
 
