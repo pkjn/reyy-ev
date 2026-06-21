@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, PermissionsAndroid } from "react-native";
 import { useRouter } from "expo-router";
 import * as Location from "expo-location";
 
@@ -40,11 +40,16 @@ export default function OnboardingScreen() {
     }
 
     // 3. Notifications (Android 13+)
-    // expo-notifications is not available in Expo Go (removed in SDK 53).
-    // Notification permissions will be requested in a production dev build.
-    // if (Platform.OS === "android") {
-    //   await Notifications.requestPermissionsAsync();
-    // }
+    // Required to start a foreground service.
+    if (Platform.OS === "android" && Platform.Version >= 33) {
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+      );
+      if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+        alert("Notification permission is required for background tracking.");
+        return;
+      }
+    }
 
     handleNext();
   };

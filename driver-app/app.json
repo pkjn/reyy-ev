@@ -40,7 +40,8 @@
           "isAndroidBackgroundLocationEnabled": true
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-task-manager"
     ],
     "experiments": {
       "typedRoutes": true
