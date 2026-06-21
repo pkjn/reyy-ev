@@ -135,13 +135,13 @@ function useLeaflet() {
     // Load CSS
     const link = document.createElement("link");
     link.rel = "stylesheet";
-    link.href = "/leaflet.css";
+    link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
     document.head.appendChild(link);
 
     // Load JS
     const script = document.createElement("script");
     script.id = "leaflet-js";
-    script.src = "/leaflet.js";
+    script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
     script.onload = () => setLoaded(true);
     document.body.appendChild(script);
   }, []);
@@ -929,10 +929,10 @@ function RentalCard({
     });
 
     const sortedLogs = [...rental.locationLogs].sort(
-      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      (a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime()
     );
 
-    const latlngs = sortedLogs.map((log) => [log.latitude, log.longitude]);
+    const latlngs = sortedLogs.map((log) => [log.latitude ?? 0, log.longitude ?? 0]);
 
     // Draw historical polyline path
     if (latlngs.length > 1) {
@@ -942,7 +942,7 @@ function RentalCard({
     // Add markers with custom style DivIcons (pulse animations for current, simple dot for historical)
     sortedLogs.forEach((log, idx) => {
       const isLatest = idx === sortedLogs.length - 1;
-      const marker = L.marker([log.latitude, log.longitude], {
+      const marker = L.marker([log.latitude ?? 0, log.longitude ?? 0], {
         icon: L.divIcon({
           className: "custom-leaflet-div-icon",
           html: isLatest
@@ -959,9 +959,9 @@ function RentalCard({
       marker.bindPopup(
         `<div style="font-family: sans-serif; font-size: 12px; color: #1e293b;">` +
         `<strong>${isLatest ? "Current Location" : "History Pin"}</strong><br/>` +
-        `Time: ${new Date(log.timestamp).toLocaleTimeString()}<br/>` +
-        `Date: ${new Date(log.timestamp).toLocaleDateString()}<br/>` +
-        `${log.batteryLevel !== undefined ? "Battery: " + Math.round(log.batteryLevel * 100) + "%" : ""}` +
+        `Time: ${log.timestamp && !isNaN(new Date(log.timestamp).getTime()) ? new Date(log.timestamp).toLocaleTimeString() : "Unknown"}<br/>` +
+        `Date: ${log.timestamp && !isNaN(new Date(log.timestamp).getTime()) ? new Date(log.timestamp).toLocaleDateString() : "Unknown"}<br/>` +
+        `${log.batteryLevel !== undefined && log.batteryLevel !== null ? "Battery: " + Math.round(log.batteryLevel) + "%" : ""}` +
         `</div>`
       );
     });
@@ -1374,7 +1374,7 @@ function RentalCard({
             }
           `}</style>
           <div className="text-xs uppercase tracking-wide text-gray-500 mb-2">
-            Driver Location History
+            Latest Known Location
           </div>
           {/* Leaflet map container */}
           <div
@@ -1402,17 +1402,17 @@ function RentalCard({
                   </span>
                   <span className="text-gray-400 mx-2">·</span>
                   <span className="text-gray-500 text-xs">
-                    {new Date(log.timestamp).toLocaleTimeString([], {
+                    {log.timestamp && !isNaN(new Date(log.timestamp).getTime()) ? new Date(log.timestamp).toLocaleTimeString([], {
                       hour: "2-digit",
                       minute: "2-digit",
                       second: "2-digit",
-                    })}{" "}
-                    ({new Date(log.timestamp).toLocaleDateString()})
+                    }) : "Unknown time"}{" "}
+                    ({log.timestamp && !isNaN(new Date(log.timestamp).getTime()) ? new Date(log.timestamp).toLocaleDateString() : "Unknown date"})
                   </span>
-                  {log.batteryLevel !== undefined && (
+                  {log.batteryLevel !== undefined && log.batteryLevel !== null && (
                     <>
                       <span className="text-gray-400 mx-2">·</span>
-                      <span className="text-gray-500 text-[10px]">🔋 {Math.round(log.batteryLevel * 100)}%</span>
+                      <span className="text-gray-500 text-[10px]">🔋 {Math.round(log.batteryLevel)}%</span>
                     </>
                   )}
                 </span>
@@ -2722,6 +2722,15 @@ function LastSeenSection({
           >
             Open in Maps ↗
           </a>
+        </div>
+        <div className="col-span-2 mt-2 pt-3 border-t border-gray-100">
+          <p className="text-xs text-gray-500 mb-1">Last Updated</p>
+          <p className="text-sm font-medium text-gray-900">
+            {tracker.captured_at && !isNaN(new Date(tracker.captured_at).getTime()) ? new Date(tracker.captured_at).toLocaleString(undefined, {
+              dateStyle: "medium",
+              timeStyle: "short",
+            }) : "Unknown"}
+          </p>
         </div>
       </div>
     </section>

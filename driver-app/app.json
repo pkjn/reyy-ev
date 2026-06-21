@@ -7,7 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "reyyev",
     "userInterfaceStyle": "automatic",
-
     "ios": {
       "supportsTablet": true
     },
@@ -47,7 +46,12 @@
       "typedRoutes": true
     },
     "extra": {
-      "API_BASE_URL": "http://192.168.1.18:3000"
-    }
+      "API_BASE_URL": "https://reyy-ev-jet.vercel.app",
+      "router": {},
+      "eas": {
+        "projectId": "999edd4d-8041-4923-905c-0e6940db6163"
+      }
+    },
+    "owner": "prateek.jn"
   }
 }

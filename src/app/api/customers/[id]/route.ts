@@ -240,11 +240,11 @@ export async function GET(
   const locationLogs = locationLogItems.map((l) => ({
     id: (l.SK as string).split("#")[2] || (l.SK as string).split("#")[1] || "",
     rentalId: l.rentalId as string,
-    latitude: l.latitude as number,
-    longitude: l.longitude as number,
+    latitude: (l.lat as number) ?? (l.latitude as number),
+    longitude: (l.lng as number) ?? (l.longitude as number),
     batteryLevel: l.batteryLevel as number | undefined,
-    timestamp: l.timestamp as string,
-    createdAt: l.createdAt as string,
+    timestamp: (l.capturedAt as string) ?? (l.timestamp as string) ?? (l.receivedAt as string),
+    createdAt: (l.receivedAt as string) ?? (l.createdAt as string) ?? "",
   }));
   const locationsByRental = new Map<string, typeof locationLogs>();
   for (const l of locationLogs) {
