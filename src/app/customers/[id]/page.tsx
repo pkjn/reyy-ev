@@ -2500,8 +2500,8 @@ function toDraft(ids: CustomerIdView[]): IdDraft[] {
     id: id.id,
     type: id.type,
     number: id.number,
-    originalSubmitted: id.original_submitted,
-    createdAt: id.created_at,
+    originalSubmitted: id.originalSubmitted,
+    createdAt: id.createdAt,
   }));
 }
 
