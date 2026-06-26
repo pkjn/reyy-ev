@@ -170,11 +170,13 @@ export default function CustomerDetailPage({
           >
             ← Back to customers
           </Link>
-          <h1 className="text-2xl font-bold mt-1">{data.name}</h1>
-          <div className="text-sm text-gray-600 mt-1 space-x-4">
-            {data.phones.length > 0 && <span>{data.phones.join(", ")}</span>}
-            {data.address && <span>{data.address}</span>}
-          </div>
+          <EditableContact
+            customerId={id}
+            name={data.name}
+            phones={data.phones}
+            address={data.address}
+            onChange={refresh}
+          />
           <div className="text-sm text-gray-600 mt-1">
             {editingLoc ? (
               <div className="flex flex-wrap items-center gap-2">
@@ -270,6 +272,177 @@ export default function CustomerDetailPage({
         accounts={accounts}
         onChange={refresh}
       />
+    </div>
+  );
+}
+
+// The customer's core contact details — name, phone numbers and address —
+// shown in the page header. These can only otherwise be set at creation time,
+// so this is the one place to fix a typo or add a number later. Saving PATCHes
+// all three at once; the API trims/dedupes phones and clears blank fields.
+function EditableContact({
+  customerId,
+  name,
+  phones,
+  address,
+  onChange,
+}: {
+  customerId: string;
+  name: string;
+  phones: string[];
+  address: string | null;
+  onChange: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [nameDraft, setNameDraft] = useState(name);
+  const [phonesDraft, setPhonesDraft] = useState<string[]>(
+    phones.length ? phones : [""]
+  );
+  const [addressDraft, setAddressDraft] = useState(address ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const startEdit = () => {
+    setNameDraft(name);
+    setPhonesDraft(phones.length ? phones : [""]);
+    setAddressDraft(address ?? "");
+    setError(null);
+    setEditing(true);
+  };
+
+  const updatePhone = (idx: number, val: string) =>
+    setPhonesDraft((prev) => prev.map((p, i) => (i === idx ? val : p)));
+  const addPhone = () => setPhonesDraft((prev) => [...prev, ""]);
+  const removePhone = (idx: number) =>
+    setPhonesDraft((prev) =>
+      prev.length === 1 ? [""] : prev.filter((_, i) => i !== idx)
+    );
+
+  const save = async () => {
+    if (!nameDraft.trim()) {
+      setError("Name cannot be empty");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/customers/${customerId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: nameDraft.trim(),
+          phones: phonesDraft.map((p) => p.trim()).filter(Boolean),
+          address: addressDraft.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        setError(j.error || "Could not save");
+        return;
+      }
+      setEditing(false);
+      onChange();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!editing) {
+    return (
+      <>
+        <div className="flex items-center gap-2 mt-1">
+          <h1 className="text-2xl font-bold">{name}</h1>
+          <button
+            onClick={startEdit}
+            className="text-xs text-emerald-700 hover:underline"
+          >
+            Edit
+          </button>
+        </div>
+        <div className="text-sm text-gray-600 mt-1 space-x-4">
+          {phones.length > 0 && <span>{phones.join(", ")}</span>}
+          {address && <span>{address}</span>}
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <div className="mt-1 w-80 max-w-full space-y-3 bg-gray-50 border border-gray-200 rounded-lg p-4">
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          Name *
+        </label>
+        <input
+          type="text"
+          value={nameDraft}
+          onChange={(e) => setNameDraft(e.target.value)}
+          autoFocus
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          Phone numbers
+        </label>
+        <div className="space-y-2">
+          {phonesDraft.map((p, idx) => (
+            <div key={idx} className="flex gap-2">
+              <input
+                type="tel"
+                value={p}
+                onChange={(e) => updatePhone(idx, e.target.value)}
+                placeholder={`Phone ${idx + 1}`}
+                className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <button
+                type="button"
+                onClick={() => removePhone(idx)}
+                disabled={phonesDraft.length === 1 && !p}
+                className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed"
+                aria-label="Remove phone"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={addPhone}
+            className="text-sm text-emerald-600 hover:text-emerald-800 font-medium"
+          >
+            + Add another number
+          </button>
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          Address
+        </label>
+        <input
+          type="text"
+          value={addressDraft}
+          onChange={(e) => setAddressDraft(e.target.value)}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+        />
+      </div>
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      <div className="flex gap-2">
+        <button
+          onClick={save}
+          disabled={saving}
+          className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+        <button
+          onClick={() => setEditing(false)}
+          disabled={saving}
+          className="text-sm text-gray-500 hover:text-gray-700"
+        >
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }
