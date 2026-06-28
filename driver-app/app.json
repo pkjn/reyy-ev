@@ -24,21 +24,10 @@
         "android.permission.FOREGROUND_SERVICE_LOCATION",
         "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
         "android.permission.POST_NOTIFICATIONS",
-        "android.permission.RECEIVE_BOOT_COMPLETED",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_BACKGROUND_LOCATION",
-        "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_LOCATION",
-        "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
-        "android.permission.POST_NOTIFICATIONS",
         "android.permission.RECEIVE_BOOT_COMPLETED"
-      ],
-      "notification": {
-        "icon": "./assets/images/android-icon-monochrome.png",
-        "color": "#10B981"
-      }
+      ]
     },
+
     "web": {
       "bundler": "metro",
       "output": "static",
@@ -51,6 +40,13 @@
         {
           "locationAlwaysAndWhenInUsePermission": "Allow Reyy EV to use your location for live fleet tracking.",
           "isAndroidBackgroundLocationEnabled": true
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-monochrome.png",
+          "color": "#10B981"
         }
       ],
       "expo-secure-store",
