@@ -1,30 +1,12 @@
-import { useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, PermissionsAndroid } from "react-native";
 import { useRouter } from "expo-router";
 import * as Location from "expo-location";
-
-import * as IntentLauncher from "expo-intent-launcher";
 import { setOnboardingComplete } from "../services/auth";
-import * as Device from "expo-device";
-
-const STEPS = ["permissions", "battery", "autostart"];
 
 export default function OnboardingScreen() {
-  const [stepIndex, setStepIndex] = useState(0);
   const router = useRouter();
 
-  const step = STEPS[stepIndex];
-
-  const handleNext = async () => {
-    if (stepIndex < STEPS.length - 1) {
-      setStepIndex(stepIndex + 1);
-    } else {
-      await setOnboardingComplete();
-      router.replace("/home");
-    }
-  };
-
-  const handlePermissions = async () => {
+  const handlePermissionsAndContinue = async () => {
     // 1. Foreground Location
     const { status: fg } = await Location.requestForegroundPermissionsAsync();
     if (fg !== "granted") {
@@ -40,7 +22,6 @@ export default function OnboardingScreen() {
     }
 
     // 3. Notifications (Android 13+)
-    // Required to start a foreground service.
     if (Platform.OS === "android" && Platform.Version >= 33) {
       const granted = await PermissionsAndroid.request(
         PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
@@ -51,83 +32,40 @@ export default function OnboardingScreen() {
       }
     }
 
-    handleNext();
-  };
-
-  const handleBattery = async () => {
-    if (Platform.OS === "android") {
-      try {
-        // Try to open battery optimization settings
-        await IntentLauncher.startActivityAsync(
-          IntentLauncher.ActivityAction.IGNORE_BATTERY_OPTIMIZATION_SETTINGS
-        );
-      } catch (e) {
-        console.warn("Could not open battery optimization settings", e);
-      }
-    }
-    handleNext();
+    // Mark setup as complete and proceed
+    await setOnboardingComplete();
+    router.replace("/home");
   };
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Setup Needed</Text>
-        <Text style={styles.subtitle}>Step {stepIndex + 1} of {STEPS.length}</Text>
+        <Text style={styles.title}>Welcome to Reyy EV</Text>
+        <Text style={styles.subtitle}>Let's get you set up</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        {step === "permissions" && (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Location & Notifications</Text>
-            <Text style={styles.cardText}>
-              We need "Always Allow" location access to track the scooty while the screen is off, and notification permission to keep the service running.
-            </Text>
-            <TouchableOpacity style={styles.button} onPress={handlePermissions}>
-              <Text style={styles.buttonText}>Grant Permissions</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Background Tracking Setup</Text>
+          
+          <Text style={styles.cardText}>
+            Reyy EV collects location data to enable live fleet tracking and route monitoring even when the app is closed or not in use.
+          </Text>
+          
+          <Text style={styles.cardText}>
+            To ensure accurate mileage and active tracking while you are on duty, please grant <Text style={{fontWeight: "bold"}}>Always Allow</Text> location access and enable notifications when prompted.
+          </Text>
 
-        {step === "battery" && (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Battery Optimization</Text>
-            <Text style={styles.cardText}>
-              Android might kill the live tracker to save battery.
+          <View style={styles.instructionBox}>
+            <Text style={styles.instructionText}>
+              Note for Xiaomi/Vivo/Oppo devices: Please ensure this app is excluded from battery optimization in your phone settings to prevent tracking dropouts.
             </Text>
-            <Text style={styles.cardText}>
-              On the next screen, find "Reyy EV" and set it to <Text style={{fontWeight: "bold"}}>"Unrestricted"</Text> or <Text style={{fontWeight: "bold"}}>"Don't Optimize"</Text>.
-            </Text>
-            <TouchableOpacity style={styles.button} onPress={handleBattery}>
-              <Text style={styles.buttonText}>Open Settings</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.outlineButton} onPress={handleNext}>
-              <Text style={styles.outlineButtonText}>I've already done this</Text>
-            </TouchableOpacity>
           </View>
-        )}
 
-        {step === "autostart" && (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Autostart (Important)</Text>
-            <Text style={styles.cardText}>
-              Device: {Device.manufacturer}
-            </Text>
-            <Text style={styles.cardText}>
-              Some phones (like Xiaomi, Vivo, Oppo) prevent apps from running in the background. You must manually enable Autostart.
-            </Text>
-            <View style={styles.instructionBox}>
-              <Text style={styles.instructionText}>
-                1. Go to your phone's Settings{"\n"}
-                2. Apps → Manage Apps{"\n"}
-                3. Find "Reyy EV"{"\n"}
-                4. Enable "Autostart"
-              </Text>
-            </View>
-            <TouchableOpacity style={styles.button} onPress={handleNext}>
-              <Text style={styles.buttonText}>I've enabled Autostart</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+          <TouchableOpacity style={styles.button} onPress={handlePermissionsAndContinue}>
+            <Text style={styles.buttonText}>Grant Access & Continue</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </View>
   );
@@ -183,34 +121,25 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 8,
     marginBottom: 24,
+    borderLeftWidth: 4,
+    borderLeftColor: "#059669",
   },
   instructionText: {
-    fontSize: 15,
-    color: "#374151",
-    lineHeight: 24,
+    fontSize: 14,
+    color: "#4b5563",
+    lineHeight: 22,
+    fontStyle: "italic",
   },
   button: {
     backgroundColor: "#059669",
     padding: 16,
     borderRadius: 8,
     alignItems: "center",
-    marginBottom: 12,
+    marginTop: 8,
   },
   buttonText: {
     color: "#ffffff",
     fontSize: 16,
     fontWeight: "bold",
-  },
-  outlineButton: {
-    padding: 16,
-    borderRadius: 8,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#d1d5db",
-  },
-  outlineButtonText: {
-    color: "#4b5563",
-    fontSize: 16,
-    fontWeight: "600",
   },
 });
