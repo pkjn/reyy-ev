@@ -231,6 +231,12 @@ Create `driver-app/eas.json` if it doesn't exist:
         "buildType": "apk"
       }
     },
+    "internal": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
+    },
     "production": {
       "android": {
         "buildType": "app-bundle"
@@ -240,20 +246,23 @@ Create `driver-app/eas.json` if it doesn't exist:
 }
 ```
 
-- **`preview`** profile → builds an `.apk` file (sideload directly to phone)
+- **`preview`** profile → builds an `.apk` file (basic sideloading)
+- **`internal`** profile → builds an `.apk` file configured for Over-The-Air (OTA) updates (recommended for the driver fleet)
 - **`production`** profile → builds an `.aab` file (upload to Google Play Store)
 
-### 3.6 Build the APK
+### 3.6 Build the Internal APK
+
+To create the initial APK that supports OTA updates, use the `internal` profile:
 
 ```bash
 cd driver-app
-eas build --platform android --profile preview
+eas build --platform android --profile internal
 ```
 
 This uploads your code to EAS servers and builds in the cloud (~5–10 minutes). When done, you'll get a **download link** for the APK.
 
 You can also check build status at:
-**https://expo.dev/accounts/prateek.jn/projects/reyyev-driver/builds**
+**https://expo.dev/accounts/[your-account]/projects/reyyev-driver/builds**
 
 ### 3.7 Install the APK
 
@@ -261,16 +270,18 @@ You can also check build status at:
 2. Open the APK → allow "Install from unknown sources" if prompted
 3. The app is installed and connects directly to your Vercel backend
 
-### 3.8 Rebuild APK After Code Changes
+### 3.8 Over-The-Air (OTA) Updates for Code Changes
 
-Whenever you update the driver app code:
+Whenever you update the driver app code (JavaScript/React changes), you **do not** need to rebuild the APK. Instead, push an OTA update:
 
 ```bash
 cd driver-app
-eas build --platform android --profile preview
+eas update --branch internal --message "Describe your changes"
 ```
 
-A new APK will be built with the latest code.
+The next time drivers open the app, it will download the new code in the background and apply it on the subsequent launch.
+
+> **Note:** If you add new native modules (like modifying `app.json` permissions or installing native packages like `expo-location`), you **must** rebuild the APK using `eas build` (Step 3.6). OTA updates only apply to JavaScript code changes.
 
 ---
 

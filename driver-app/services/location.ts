@@ -41,21 +41,20 @@ export async function startLocationUpdates() {
     return;
   }
 
-  const isStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
-  if (!isStarted) {
-    await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-      accuracy: Location.Accuracy.High,
-      timeInterval: 60000,
-      distanceInterval: 0,
-      foregroundService: {
-        notificationTitle: "Reyy EV",
-        notificationBody: "Live tracking is active.",
-        notificationColor: "#10B981", // emerald-500
-      },
-      showsBackgroundLocationIndicator: true,
-      pausesUpdatesAutomatically: false,
-    });
-  }
+  // Always call startLocationUpdatesAsync to ensure the foreground service is active
+  // and the latest parameters are applied, even if it was previously started.
+  await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
+    accuracy: Location.Accuracy.High,
+    timeInterval: 60000,
+    distanceInterval: 0,
+    foregroundService: {
+      notificationTitle: "Reyy EV",
+      notificationBody: "Live tracking is active.",
+      notificationColor: "#10B981", // emerald-500
+    },
+    showsBackgroundLocationIndicator: true,
+    pausesUpdatesAutomatically: false,
+  });
 
   // Force an immediate push
   await forceLocationPush();

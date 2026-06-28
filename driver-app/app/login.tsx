@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Image } from "react-native";
 import { useRouter } from "expo-router";
 import { login } from "../services/api";
 import { saveToken } from "../services/auth";
@@ -19,11 +19,27 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       const data = await login(phone, password);
-      await saveToken(data.token);
-      
-      // Let the _layout checkAuth handle routing us to onboarding or home
+
+      // Save token — wrapped separately because expo-secure-store can throw
+      // native exceptions in APK builds if the keychain isn't ready.
+      try {
+        await saveToken(data.token);
+      } catch (storeErr) {
+        console.error("Failed to save token to SecureStore:", storeErr);
+        Alert.alert(
+          "Storage Error",
+          "Could not save login credentials. Please try again."
+        );
+        return;
+      }
+
+      // Don't call router.replace() here — _layout.tsx watches `segments`
+      // and will automatically route to /onboarding or /home once it detects
+      // the token via isLoggedIn(). Calling replace from both login.tsx AND
+      // _layout.tsx simultaneously causes a race-condition crash on Android.
       router.replace("/onboarding");
     } catch (err) {
+      console.error("Login error:", err);
       Alert.alert("Login Failed", err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLoading(false);
@@ -33,6 +49,11 @@ export default function LoginScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
+        <Image 
+          source={require("../assets/images/reyy-ev-logo.jpeg")} 
+          style={styles.logo} 
+          resizeMode="contain" 
+        />
         <Text style={styles.title}>Reyy EV</Text>
         <Text style={styles.subtitle}>Driver App</Text>
       </View>
@@ -83,6 +104,12 @@ const styles = StyleSheet.create({
   header: {
     alignItems: "center",
     marginBottom: 48,
+  },
+  logo: {
+    width: 80,
+    height: 80,
+    marginBottom: 16,
+    borderRadius: 16,
   },
   title: {
     fontSize: 32,

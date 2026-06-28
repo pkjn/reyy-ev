@@ -4,7 +4,7 @@
     "slug": "reyyev-driver",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/reyy-ev-logo.png",
     "scheme": "reyyev",
     "userInterfaceStyle": "automatic",
     "ios": {
@@ -12,7 +12,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "foregroundImage": "./assets/images/reyy-ev-logo.png",
         "backgroundColor": "#ffffff"
       },
       "package": "in.reyyev.driver",
@@ -23,8 +23,21 @@
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_LOCATION",
         "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
-        "android.permission.POST_NOTIFICATIONS"
-      ]
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECEIVE_BOOT_COMPLETED"
+      ],
+      "notification": {
+        "icon": "./assets/images/android-icon-monochrome.png",
+        "color": "#10B981"
+      }
     },
     "web": {
       "bundler": "metro",
@@ -53,6 +66,12 @@
         "projectId": "999edd4d-8041-4923-905c-0e6940db6163"
       }
     },
-    "owner": "prateek.jn"
+    "owner": "prateek.jn",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/999edd4d-8041-4923-905c-0e6940db6163"
+    }
   }
 }
