@@ -6,7 +6,7 @@ import {
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { getViewUrl, deleteObject } from "@/lib/s3";
-import { computeRentalBalances, Payment, Rental } from "@/lib/billing";
+import { computeRentalBalances, Payment, Rental, readPauses } from "@/lib/billing";
 import { CustomerId, isValidIdType } from "@/lib/idTypes";
 import { v4 as uuid } from "uuid";
 
@@ -230,6 +230,7 @@ export async function GET(
         securityDeposit: (r.securityDeposit as number) || 0,
         refundableDeposit: (r.refundableDeposit as number) || 0,
         notes: (r.notes as string) || null,
+        pauses: readPauses(r),
         createdAt: r.createdAt as string,
       };
       const payments = (paymentsByRental.get(rental.id) || []).sort((a, b) =>

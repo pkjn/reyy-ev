@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import ddb, { TABLE_NAME } from "@/lib/db";
 import { QueryCommand } from "@aws-sdk/lib-dynamodb";
-import { computeRentalBalances, Rental } from "@/lib/billing";
+import { computeRentalBalances, Rental, readPauses } from "@/lib/billing";
 
 // GET /api/dashboard — surfaces customers who need attention.
 //
@@ -134,6 +134,7 @@ export async function GET() {
       securityDeposit: (r.securityDeposit as number) || 0,
       refundableDeposit: (r.refundableDeposit as number) || 0,
       notes: null,
+      pauses: readPauses(r),
       createdAt: r.createdAt as string,
     };
     if (rental.endDate) continue; // closed — skip from active dashboard

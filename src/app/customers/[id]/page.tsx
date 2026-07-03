@@ -69,6 +69,7 @@ interface RentalView {
   refunds: Refund[];
   deposits: Deposit[];
   scooties: { label: string; from: string; note: string | null }[];
+  pauses: { start: string; end: string | null }[];
   balances: {
     daysBilled: number;
     totalBilled: number;
@@ -78,6 +79,8 @@ interface RentalView {
     daysRemaining: number;
     coverageStatus: "paid" | "due_today" | "overdue";
     status: "active" | "closed";
+    paused: boolean;
+    pausedSince: string | null;
   };
 }
 
@@ -1002,7 +1005,8 @@ function RentalCard({
   const [showSwapForm, setShowSwapForm] = useState(false);
   const [showDepositForm, setShowDepositForm] = useState(false);
   const isActive = rental.balances.status === "active";
-  const { coverageStatus, daysRemaining, paidThroughDate } = rental.balances;
+  const { coverageStatus, daysRemaining, paidThroughDate, paused, pausedSince } =
+    rental.balances;
 
   const totalRefunded = rental.refunds.reduce((s, r) => s + r.amount, 0);
   // The deposit may be collected in installments — sum what's actually in.
@@ -1125,6 +1129,20 @@ function RentalCard({
               </ul>
             </div>
           )}
+          {rental.pauses.length > 0 && (
+            <div className="text-xs text-gray-600 mt-1">
+              <span className="uppercase tracking-wide text-[10px] text-gray-400">
+                Paused
+              </span>
+              <ul className="mt-0.5 space-y-0.5">
+                {rental.pauses.map((p, i) => (
+                  <li key={`${p.start}-${i}`} className="text-gray-500">
+                    {p.start} → {p.end || "ongoing"}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {rental.securityDeposit > 0 && (
             <div className="text-xs text-gray-600 mt-0.5">
               Deposit{" "}
@@ -1176,7 +1194,16 @@ function RentalCard({
             <div className="text-xs text-gray-600 mt-1 italic">{rental.notes}</div>
           )}
         </div>
-        {isActive && <CoverageBadge status={coverageStatus} days={daysRemaining} />}
+        {isActive && (
+          <div className="flex flex-col items-end gap-1">
+            {paused && (
+              <div className="inline-block bg-slate-200 text-slate-700 text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded">
+                Paused{pausedSince ? ` · since ${pausedSince}` : ""}
+              </div>
+            )}
+            <CoverageBadge status={coverageStatus} days={daysRemaining} />
+          </div>
+        )}
       </div>
 
       <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
@@ -1215,6 +1242,30 @@ function RentalCard({
             className="text-sm bg-white border border-sky-300 text-sky-700 px-3 py-1.5 rounded-lg hover:bg-sky-50"
           >
             {showSwapForm ? "Cancel" : "Swap scooty"}
+          </button>
+        )}
+        {isActive && (
+          <button
+            onClick={async () => {
+              const today = new Date().toISOString().slice(0, 10);
+              const label = paused ? "Resume" : "Pause";
+              const date = prompt(`${label} date (YYYY-MM-DD):`, today);
+              if (!date) return;
+              const res = await fetch(`/api/rentals/${rental.id}/pause`, {
+                method: paused ? "PATCH" : "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ date, customer_id: customerId }),
+              });
+              if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                alert(body.error || `Failed to ${label.toLowerCase()}`);
+                return;
+              }
+              onChange();
+            }}
+            className="text-sm bg-white border border-slate-300 text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-50"
+          >
+            {paused ? "Resume billing" : "Pause billing"}
           </button>
         )}
         {isActive && (
