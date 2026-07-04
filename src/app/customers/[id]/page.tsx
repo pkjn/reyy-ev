@@ -15,6 +15,7 @@ interface Photo {
   id: string;
   original_name: string;
   url: string;
+  kind: "image" | "video";
   created_at: string;
 }
 
@@ -595,13 +596,13 @@ function PhotosSection({
   return (
     <section className="bg-white rounded-lg border border-gray-200 p-5">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <h2 className="font-semibold">Photos</h2>
+        <h2 className="font-semibold">Photos &amp; Videos</h2>
         <label className="cursor-pointer bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-emerald-700">
           {uploading ? "Uploading…" : "+ Upload"}
           <input
             type="file"
             multiple
-            accept="image/*"
+            accept="image/*,video/*"
             className="hidden"
             disabled={uploading}
             onChange={handleUpload}
@@ -611,7 +612,7 @@ function PhotosSection({
 
       {photos.length === 0 ? (
         <p className="text-sm text-gray-500 text-center py-6 bg-gray-50 border border-gray-200 rounded-lg">
-          No photos yet
+          No photos or videos yet
         </p>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -620,14 +621,23 @@ function PhotosSection({
               key={p.id}
               className="relative group border border-gray-200 rounded-lg overflow-hidden"
             >
-              <a href={p.url} target="_blank" rel="noopener noreferrer">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+              {p.kind === "video" ? (
+                <video
                   src={p.url}
-                  alt={p.original_name}
-                  className="w-full h-32 object-cover cursor-pointer"
+                  controls
+                  preload="metadata"
+                  className="w-full h-32 object-cover bg-black"
                 />
-              </a>
+              ) : (
+                <a href={p.url} target="_blank" rel="noopener noreferrer">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={p.url}
+                    alt={p.original_name}
+                    className="w-full h-32 object-cover cursor-pointer"
+                  />
+                </a>
+              )}
               <button
                 onClick={() => handleDelete(p.id)}
                 className="absolute top-1 right-1 bg-white/90 text-red-600 text-xs px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition"

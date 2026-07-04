@@ -39,6 +39,18 @@ function readIds(profile: Record<string, unknown>): CustomerId[] {
   return [];
 }
 
+// Whether a stored media item is a photo or a video. New records carry the
+// browser-supplied `contentType`; older photo-only records don't, so fall back
+// to the file extension (defaulting to image, since everything before videos
+// were supported was a photo).
+function mediaKind(item: Record<string, unknown>): "image" | "video" {
+  const ct = typeof item.contentType === "string" ? item.contentType : "";
+  if (ct.startsWith("video/")) return "video";
+  if (ct.startsWith("image/")) return "image";
+  const name = `${item.s3Key ?? ""}${item.originalName ?? ""}`.toLowerCase();
+  return /\.(mp4|mov|webm|avi|mkv|m4v|3gp)$/.test(name) ? "video" : "image";
+}
+
 function normaliseIds(raw: unknown): CustomerId[] {
   if (!Array.isArray(raw)) return [];
   const now = new Date().toISOString();
@@ -107,6 +119,7 @@ export async function GET(
       id: p.photoId as string,
       original_name: p.originalName as string,
       url: await getViewUrl(p.s3Key as string),
+      kind: mediaKind(p),
       created_at: p.createdAt as string,
     }))
   );

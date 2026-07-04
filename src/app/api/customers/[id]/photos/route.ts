@@ -48,6 +48,7 @@ export async function POST(
           photoId,
           customerId,
           originalName: file.name,
+          contentType: file.type || "",
           s3Key,
           createdAt: now,
         },
