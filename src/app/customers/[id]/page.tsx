@@ -1522,7 +1522,7 @@ function RentalCard({
         />
       )}
 
-      {rental.kmsLogs && rental.kmsLogs.length > 0 && (
+      {rental.kmsLogs && rental.kmsLogs.length > 0 ? (
         <div className="mt-4 border-t border-gray-100 pt-3">
           <div className="text-xs uppercase tracking-wide text-gray-500 mb-2">
             Odometer History
@@ -1543,9 +1543,14 @@ function RentalCard({
             ))}
           </ul>
         </div>
+      ) : (
+        <div className="mt-4 border-t border-gray-100 pt-3">
+          <div className="text-xs uppercase tracking-wide text-gray-500 mb-2">Odometer History</div>
+          <p className="text-sm text-gray-500 italic">No odometer readings logged yet.</p>
+        </div>
       )}
 
-      {rental.locationLogs && rental.locationLogs.length > 0 && (
+      {rental.locationLogs && rental.locationLogs.length > 0 ? (
         <div className="mt-4 border-t border-gray-100 pt-3">
           <style>{`
             @keyframes leaflet-ping {
@@ -1616,6 +1621,11 @@ function RentalCard({
               );
             })}
           </ul>
+        </div>
+      ) : (
+        <div className="mt-4 border-t border-gray-100 pt-3">
+          <div className="text-xs uppercase tracking-wide text-gray-500 mb-2">Latest Known Location</div>
+          <p className="text-sm text-gray-500 italic">No location history available for this rental.</p>
         </div>
       )}
 
@@ -2854,7 +2864,21 @@ function LastSeenSection({
 }: {
   tracker?: CustomerDetail["live_tracker"];
 }) {
-  if (!tracker) return null;
+  if (!tracker) {
+    return (
+      <section className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="bg-gray-50 border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+          <h2 className="font-semibold text-gray-900">Live Tracker</h2>
+          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+            Offline
+          </span>
+        </div>
+        <div className="p-4 text-sm text-gray-500 italic">
+          No live tracking data available. Driver app may be offline.
+        </div>
+      </section>
+    );
+  }
 
   const isStale = tracker.seconds_ago > 600; // > 10 min
 
