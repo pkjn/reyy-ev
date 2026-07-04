@@ -1069,6 +1069,7 @@ function RentalCard({
   const [showRefundForm, setShowRefundForm] = useState(false);
   const [showSwapForm, setShowSwapForm] = useState(false);
   const [showDepositForm, setShowDepositForm] = useState(false);
+  const [showKmsForm, setShowKmsForm] = useState(false);
   const [pulling, setPulling] = useState(false);
   const isActive = rental.balances.status === "active";
 
@@ -1506,6 +1507,18 @@ function RentalCard({
             setShowDepositForm(false);
             onChange();
           }}
+        />
+      )}
+
+      {showKmsForm && (
+        <KmsForm
+          rentalId={rental.id}
+          customerId={customerId}
+          onSaved={() => {
+            setShowKmsForm(false);
+            onChange();
+          }}
+          onCancel={() => setShowKmsForm(false)}
         />
       )}
 
@@ -2367,6 +2380,121 @@ function SwapForm({
     </form>
   );
 }
+
+function KmsForm({
+  rentalId,
+  customerId,
+  onSaved,
+  onCancel,
+}: {
+  rentalId: string;
+  customerId: string;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [kms, setKms] = useState("");
+  const [date, setDate] = useState(today);
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const kmsNum = parseInt(kms, 10);
+    if (isNaN(kmsNum) || kmsNum < 0) {
+      setError("Enter a non-negative odometer reading.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/rentals/${rentalId}/kms`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customer_id: customerId,
+          kms: kmsNum,
+          date,
+          note: note.trim() || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setError(body.error || "Failed to log odometer.");
+        return;
+      }
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form
+      onSubmit={submit}
+      className="mt-3 bg-orange-50/60 border border-orange-200 rounded-lg p-3 space-y-2"
+    >
+      <div className="text-xs font-semibold text-orange-800">
+        Log Odometer Reading (km)
+      </div>
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-800 text-xs rounded-lg p-2">
+          {error}
+        </div>
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <Field label="Odometer (km) *">
+          <input
+            type="number"
+            min="0"
+            step="1"
+            required
+            value={kms}
+            onChange={(e) => setKms(e.target.value)}
+            placeholder="e.g. 15420"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          />
+        </Field>
+        <Field label="Date *">
+          <input
+            type="date"
+            required
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          />
+        </Field>
+        <Field label="Note">
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="e.g. regular checkup"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          />
+        </Field>
+      </div>
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={saving}
+          className="bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-700 disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Record Odometer"}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={saving}
+          className="text-sm text-gray-600 hover:text-gray-800 px-4 py-2"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
 
 interface IdDraft {
   id?: string;
