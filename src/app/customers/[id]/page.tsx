@@ -15,6 +15,7 @@ interface Photo {
   id: string;
   original_name: string;
   url: string;
+  kind: "image" | "video";
   created_at: string;
 }
 
@@ -71,6 +72,7 @@ interface RentalView {
   kmsLogs: Omit<KmsLog, "customerId">[];
   scooties: { label: string; from: string; note: string | null }[];
   locationLogs?: LocationLog[];
+  pauses: { start: string; end: string | null }[];
   balances: {
     daysBilled: number;
     totalBilled: number;
@@ -80,6 +82,8 @@ interface RentalView {
     daysRemaining: number;
     coverageStatus: "paid" | "due_today" | "overdue";
     status: "active" | "closed";
+    paused: boolean;
+    pausedSince: string | null;
   };
 }
 
@@ -154,7 +158,7 @@ function useLeaflet() {
 function mapsHref(loc: string): string {
   const v = loc.trim();
   if (/^https?:\/\//i.test(v)) return v;
-  return `https://www.google.com/maps/place/${encodeURIComponent(v)}`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(v)}`;
 }
 
 export default function CustomerDetailPage({
@@ -217,11 +221,13 @@ export default function CustomerDetailPage({
           >
             ← Back to customers
           </Link>
-          <h1 className="text-2xl font-bold mt-1">{data.name}</h1>
-          <div className="text-sm text-gray-600 mt-1 space-x-4">
-            {data.phones.length > 0 && <span>{data.phones.join(", ")}</span>}
-            {data.address && <span>{data.address}</span>}
-          </div>
+          <EditableContact
+            customerId={id}
+            name={data.name}
+            phones={data.phones}
+            address={data.address}
+            onChange={refresh}
+          />
           <div className="text-sm text-gray-600 mt-1">
             {editingLoc ? (
               <div className="flex flex-wrap items-center gap-2">
@@ -325,6 +331,177 @@ export default function CustomerDetailPage({
         accounts={accounts}
         onChange={refresh}
       />
+    </div>
+  );
+}
+
+// The customer's core contact details — name, phone numbers and address —
+// shown in the page header. These can only otherwise be set at creation time,
+// so this is the one place to fix a typo or add a number later. Saving PATCHes
+// all three at once; the API trims/dedupes phones and clears blank fields.
+function EditableContact({
+  customerId,
+  name,
+  phones,
+  address,
+  onChange,
+}: {
+  customerId: string;
+  name: string;
+  phones: string[];
+  address: string | null;
+  onChange: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [nameDraft, setNameDraft] = useState(name);
+  const [phonesDraft, setPhonesDraft] = useState<string[]>(
+    phones.length ? phones : [""]
+  );
+  const [addressDraft, setAddressDraft] = useState(address ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const startEdit = () => {
+    setNameDraft(name);
+    setPhonesDraft(phones.length ? phones : [""]);
+    setAddressDraft(address ?? "");
+    setError(null);
+    setEditing(true);
+  };
+
+  const updatePhone = (idx: number, val: string) =>
+    setPhonesDraft((prev) => prev.map((p, i) => (i === idx ? val : p)));
+  const addPhone = () => setPhonesDraft((prev) => [...prev, ""]);
+  const removePhone = (idx: number) =>
+    setPhonesDraft((prev) =>
+      prev.length === 1 ? [""] : prev.filter((_, i) => i !== idx)
+    );
+
+  const save = async () => {
+    if (!nameDraft.trim()) {
+      setError("Name cannot be empty");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/customers/${customerId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: nameDraft.trim(),
+          phones: phonesDraft.map((p) => p.trim()).filter(Boolean),
+          address: addressDraft.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        setError(j.error || "Could not save");
+        return;
+      }
+      setEditing(false);
+      onChange();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!editing) {
+    return (
+      <>
+        <div className="flex items-center gap-2 mt-1">
+          <h1 className="text-2xl font-bold">{name}</h1>
+          <button
+            onClick={startEdit}
+            className="text-xs text-emerald-700 hover:underline"
+          >
+            Edit
+          </button>
+        </div>
+        <div className="text-sm text-gray-600 mt-1 space-x-4">
+          {phones.length > 0 && <span>{phones.join(", ")}</span>}
+          {address && <span>{address}</span>}
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <div className="mt-1 w-80 max-w-full space-y-3 bg-gray-50 border border-gray-200 rounded-lg p-4">
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          Name *
+        </label>
+        <input
+          type="text"
+          value={nameDraft}
+          onChange={(e) => setNameDraft(e.target.value)}
+          autoFocus
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          Phone numbers
+        </label>
+        <div className="space-y-2">
+          {phonesDraft.map((p, idx) => (
+            <div key={idx} className="flex gap-2">
+              <input
+                type="tel"
+                value={p}
+                onChange={(e) => updatePhone(idx, e.target.value)}
+                placeholder={`Phone ${idx + 1}`}
+                className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <button
+                type="button"
+                onClick={() => removePhone(idx)}
+                disabled={phonesDraft.length === 1 && !p}
+                className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed"
+                aria-label="Remove phone"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={addPhone}
+            className="text-sm text-emerald-600 hover:text-emerald-800 font-medium"
+          >
+            + Add another number
+          </button>
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          Address
+        </label>
+        <input
+          type="text"
+          value={addressDraft}
+          onChange={(e) => setAddressDraft(e.target.value)}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+        />
+      </div>
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      <div className="flex gap-2">
+        <button
+          onClick={save}
+          disabled={saving}
+          className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+        <button
+          onClick={() => setEditing(false)}
+          disabled={saving}
+          className="text-sm text-gray-500 hover:text-gray-700"
+        >
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }
@@ -474,13 +651,13 @@ function PhotosSection({
   return (
     <section className="bg-white rounded-lg border border-gray-200 p-5">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <h2 className="font-semibold">Photos</h2>
+        <h2 className="font-semibold">Photos &amp; Videos</h2>
         <label className="cursor-pointer bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-emerald-700">
           {uploading ? "Uploading…" : "+ Upload"}
           <input
             type="file"
             multiple
-            accept="image/*"
+            accept="image/*,video/*"
             className="hidden"
             disabled={uploading}
             onChange={handleUpload}
@@ -490,7 +667,7 @@ function PhotosSection({
 
       {photos.length === 0 ? (
         <p className="text-sm text-gray-500 text-center py-6 bg-gray-50 border border-gray-200 rounded-lg">
-          No photos yet
+          No photos or videos yet
         </p>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -499,14 +676,23 @@ function PhotosSection({
               key={p.id}
               className="relative group border border-gray-200 rounded-lg overflow-hidden"
             >
-              <a href={p.url} target="_blank" rel="noopener noreferrer">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+              {p.kind === "video" ? (
+                <video
                   src={p.url}
-                  alt={p.original_name}
-                  className="w-full h-32 object-cover cursor-pointer"
+                  controls
+                  preload="metadata"
+                  className="w-full h-32 object-cover bg-black"
                 />
-              </a>
+              ) : (
+                <a href={p.url} target="_blank" rel="noopener noreferrer">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={p.url}
+                    alt={p.original_name}
+                    className="w-full h-32 object-cover cursor-pointer"
+                  />
+                </a>
+              )}
               <button
                 onClick={() => handleDelete(p.id)}
                 className="absolute top-1 right-1 bg-white/90 text-red-600 text-xs px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition"
@@ -595,7 +781,6 @@ function NewRentalForm({
   const today = new Date().toISOString().slice(0, 10);
   const [scootyLabel, setScootyLabel] = useState("");
   const [startDate, setStartDate] = useState(today);
-  const [startKms, setStartKms] = useState("");
   const [rate, setRate] = useState("");
   const [rateUnit, setRateUnit] = useState<RateUnit>("day");
   const [securityDeposit, setSecurityDeposit] = useState("");
@@ -643,7 +828,6 @@ function NewRentalForm({
           deposit_collected: collectedNow,
           deposit_account: collectedNow > 0 ? selectedDepositAccount : undefined,
           advance_payment: hasAdvance ? parseFloat(advancePayment) : 0,
-          start_kms: startKms ? parseInt(startKms, 10) : undefined,
           advance_account: hasAdvance ? selectedAccount : undefined,
           advance_screenshot_filename: includeScreenshot
             ? advanceScreenshot!.name
@@ -694,18 +878,6 @@ function NewRentalForm({
             required
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-          />
-        </Field>
-        <Field label="Odometer reading at start (km) *">
-          <input
-            type="number"
-            min="0"
-            step="1"
-            required
-            value={startKms}
-            onChange={(e) => setStartKms(e.target.value)}
-            placeholder="e.g. 15000"
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
           />
         </Field>
@@ -893,9 +1065,10 @@ function RentalCard({
   accounts: AccountOption[];
   onChange: () => void;
 }) {
-  type FormKind = "pay" | "refund" | "deposit" | "swap" | "kms" | null;
-  const [activeForm, setActiveForm] = useState<FormKind>(null);
-  const toggleForm = (kind: FormKind) => setActiveForm((v) => (v === kind ? null : kind));
+  const [showPayForm, setShowPayForm] = useState(false);
+  const [showRefundForm, setShowRefundForm] = useState(false);
+  const [showSwapForm, setShowSwapForm] = useState(false);
+  const [showDepositForm, setShowDepositForm] = useState(false);
   const [pulling, setPulling] = useState(false);
   const isActive = rental.balances.status === "active";
 
@@ -939,7 +1112,7 @@ function RentalCard({
       L.polyline(latlngs, { color: "#0ea5e9", weight: 3, opacity: 0.8 }).addTo(mapRef.current);
     }
 
-    // Add markers with custom style DivIcons (pulse animations for current, simple dot for historical)
+    // Add markers with custom style DivIcons
     sortedLogs.forEach((log, idx) => {
       const isLatest = idx === sortedLogs.length - 1;
       const marker = L.marker([log.latitude ?? 0, log.longitude ?? 0], {
@@ -983,7 +1156,9 @@ function RentalCard({
       }
     };
   }, []);
-  const { coverageStatus, daysRemaining, paidThroughDate } = rental.balances;
+
+  const { coverageStatus, daysRemaining, paidThroughDate, paused, pausedSince } =
+    rental.balances;
 
   const latestKms = rental.kmsLogs && rental.kmsLogs.length > 0 ? rental.kmsLogs[0].kms : null;
   const odometerValue = latestKms !== null ? `${latestKms.toLocaleString("en-IN")} km` : "—";
@@ -1109,6 +1284,20 @@ function RentalCard({
               </ul>
             </div>
           )}
+          {rental.pauses.length > 0 && (
+            <div className="text-xs text-gray-600 mt-1">
+              <span className="uppercase tracking-wide text-[10px] text-gray-400">
+                Paused
+              </span>
+              <ul className="mt-0.5 space-y-0.5">
+                {rental.pauses.map((p, i) => (
+                  <li key={`${p.start}-${i}`} className="text-gray-500">
+                    {p.start} → {p.end || "ongoing"}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {rental.securityDeposit > 0 && (
             <div className="text-xs text-gray-600 mt-0.5">
               Deposit{" "}
@@ -1160,82 +1349,78 @@ function RentalCard({
             <div className="text-xs text-gray-600 mt-1 italic">{rental.notes}</div>
           )}
         </div>
-        {isActive && <CoverageBadge status={coverageStatus} days={daysRemaining} />}
+        {isActive && (
+          <div className="flex flex-col items-end gap-1">
+            {paused && (
+              <div className="inline-block bg-slate-200 text-slate-700 text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded">
+                Paused{pausedSince ? ` · since ${pausedSince}` : ""}
+              </div>
+            )}
+            <CoverageBadge status={coverageStatus} days={daysRemaining} />
+          </div>
+        )}
       </div>
 
-      <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+      <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
         <Stat
           label="Paid through"
           value={paidThroughDate || "—"}
         />
         <Stat label="Days billed" value={String(rental.balances.daysBilled)} />
         <Stat label="Paid" value={formatINR(rental.balances.totalPaid)} />
-        <Stat label="Odometer" value={odometerValue} />
       </div>
 
       <div className="mt-3 flex gap-2 flex-wrap">
         <button
-          onClick={() => toggleForm("pay")}
+          onClick={() => setShowPayForm((v) => !v)}
           className="text-sm bg-white border border-emerald-300 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-50"
         >
-          {activeForm === "pay" ? "Cancel" : "+ Record Payment"}
+          {showPayForm ? "Cancel" : "+ Record Payment"}
         </button>
-        {isActive && (
-          <button
-            onClick={() => toggleForm("kms")}
-            className="text-sm bg-white border border-orange-300 text-orange-700 px-3 py-1.5 rounded-lg hover:bg-orange-50"
-          >
-            {activeForm === "kms" ? "Cancel" : "+ Log KMS"}
-          </button>
-        )}
         {rental.securityDeposit > 0 && (
           <button
-            onClick={() => toggleForm("refund")}
+            onClick={() => setShowRefundForm((v) => !v)}
             className="text-sm bg-white border border-amber-300 text-amber-700 px-3 py-1.5 rounded-lg hover:bg-amber-50"
           >
-            {activeForm === "refund" ? "Cancel" : "+ Refund Deposit"}
+            {showRefundForm ? "Cancel" : "+ Refund / Settlement"}
           </button>
         )}
         <button
-          onClick={() => toggleForm("deposit")}
+          onClick={() => setShowDepositForm((v) => !v)}
           className="text-sm bg-white border border-sky-300 text-sky-700 px-3 py-1.5 rounded-lg hover:bg-sky-50"
         >
-          {activeForm === "deposit" ? "Cancel" : "Edit deposit"}
+          {showDepositForm ? "Cancel" : "Edit deposit"}
         </button>
         {isActive && (
           <button
-            onClick={() => toggleForm("swap")}
+            onClick={() => setShowSwapForm((v) => !v)}
             className="text-sm bg-white border border-sky-300 text-sky-700 px-3 py-1.5 rounded-lg hover:bg-sky-50"
           >
-            {activeForm === "swap" ? "Cancel" : "Swap scooty"}
+            {showSwapForm ? "Cancel" : "Swap scooty"}
           </button>
         )}
         {isActive && (
           <button
-            disabled={pulling}
             onClick={async () => {
-              setPulling(true);
-              try {
-                const res = await fetch(`/api/rentals/${rental.id}/pull`, {
-                  method: "POST",
-                });
-                if (!res.ok) throw new Error("Failed to send pull command");
-                
-                // Poll for updates in the background to automatically refresh the location list
-                setTimeout(onChange, 2000);
-                setTimeout(onChange, 4000);
-                setTimeout(() => {
-                  onChange();
-                  setPulling(false);
-                }, 6000);
-              } catch (err: any) {
-                alert("Pull error: " + err.message);
-                setPulling(false);
+              const today = new Date().toISOString().slice(0, 10);
+              const label = paused ? "Resume" : "Pause";
+              const date = prompt(`${label} date (YYYY-MM-DD):`, today);
+              if (!date) return;
+              const res = await fetch(`/api/rentals/${rental.id}/pause`, {
+                method: paused ? "PATCH" : "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ date, customer_id: customerId }),
+              });
+              if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                alert(body.error || `Failed to ${label.toLowerCase()}`);
+                return;
               }
+              onChange();
             }}
-            className="text-sm bg-white border border-purple-300 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-50 disabled:opacity-50"
+            className="text-sm bg-white border border-slate-300 text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-50"
           >
-            {pulling ? "Pulling..." : "Pull Location"}
+            {paused ? "Resume billing" : "Pause billing"}
           </button>
         )}
         {isActive && (
@@ -1271,20 +1456,20 @@ function RentalCard({
         </button>
       </div>
 
-      {activeForm === "pay" && (
+      {showPayForm && (
         <CollectForm
           rentalId={rental.id}
           customerId={customerId}
           accounts={accounts}
           depositOutstanding={depositOutstanding}
           onSaved={() => {
-            setActiveForm(null);
+            setShowPayForm(false);
             onChange();
           }}
         />
       )}
 
-      {activeForm === "refund" && (
+      {showRefundForm && (
         <RefundForm
           rentalId={rental.id}
           customerId={customerId}
@@ -1292,25 +1477,25 @@ function RentalCard({
           defaultAmount={remainingRefundable}
           defaultAccount={rental.deposits[0]?.account || ""}
           onSaved={() => {
-            setActiveForm(null);
+            setShowRefundForm(false);
             onChange();
           }}
         />
       )}
 
-      {activeForm === "swap" && (
+      {showSwapForm && (
         <SwapForm
           rentalId={rental.id}
           customerId={customerId}
           currentLabel={rental.scootyLabel}
           onSaved={() => {
-            setActiveForm(null);
+            setShowSwapForm(false);
             onChange();
           }}
         />
       )}
 
-      {activeForm === "deposit" && (
+      {showDepositForm && (
         <DepositEditForm
           rentalId={rental.id}
           customerId={customerId}
@@ -1318,21 +1503,9 @@ function RentalCard({
           currentRefundable={rental.refundableDeposit}
           collected={depositCollected}
           onSaved={() => {
-            setActiveForm(null);
+            setShowDepositForm(false);
             onChange();
           }}
-        />
-      )}
-
-      {activeForm === "kms" && (
-        <KmsForm
-          rentalId={rental.id}
-          customerId={customerId}
-          onSaved={() => {
-            setActiveForm(null);
-            onChange();
-          }}
-          onCancel={() => setActiveForm(null)}
         />
       )}
 
@@ -1855,6 +2028,7 @@ function RefundForm({
   const [note, setNote] = useState("");
   const [screenshot, setScreenshot] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Default to the deposit's account, then any account.
   const selectedAccount = account || defaultAccount || accounts[0]?.id || "";
@@ -1862,6 +2036,7 @@ function RefundForm({
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setError(null);
     try {
       const res = await fetch(`/api/rentals/${rentalId}/refund`, {
         method: "POST",
@@ -1876,9 +2051,18 @@ function RefundForm({
           screenshot_type: screenshot?.type,
         }),
       });
-      const json = (await res.json()) as {
+      const json = (await res.json().catch(() => ({}))) as {
         screenshot_upload_url?: string | null;
+        error?: string;
       };
+      // The refund can be rejected server-side (e.g. amount exceeds the
+      // deposit actually collected). Surface it instead of closing the form as
+      // if it saved — otherwise the refund silently never lands in the account
+      // ledger.
+      if (!res.ok) {
+        setError(json.error || "Could not save the refund");
+        return;
+      }
       if (screenshot && json.screenshot_upload_url) {
         await fetch(json.screenshot_upload_url, {
           method: "PUT",
@@ -1898,7 +2082,7 @@ function RefundForm({
       className="mt-3 bg-amber-50/60 border border-amber-200 rounded-lg p-3 space-y-2"
     >
       <div className="text-xs font-semibold text-amber-800">
-        Refund deposit (money out)
+        Refund / Settlement (money out)
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
         <Field label="Amount (₹) *">
@@ -1961,6 +2145,7 @@ function RefundForm({
           {saving ? "Saving…" : "Refund"}
         </button>
       </div>
+      {error && <div className="text-xs text-red-600">{error}</div>}
     </form>
   );
 }
@@ -2098,7 +2283,6 @@ function SwapForm({
   const [label, setLabel] = useState("");
   const [swapDate, setSwapDate] = useState(today);
   const [note, setNote] = useState("");
-  const [startKms, setStartKms] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -2119,7 +2303,6 @@ function SwapForm({
           scooty_label: label.trim(),
           swap_date: swapDate,
           note: note.trim() || undefined,
-          start_kms: startKms ? parseInt(startKms, 10) : undefined,
         }),
       });
       if (!res.ok) {
@@ -2146,7 +2329,7 @@ function SwapForm({
           {error}
         </div>
       )}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <Field label="New scooty *">
           <input
             value={label}
@@ -2162,18 +2345,6 @@ function SwapForm({
             required
             value={swapDate}
             onChange={(e) => setSwapDate(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-          />
-        </Field>
-        <Field label="Odometer reading (km) *">
-          <input
-            type="number"
-            min="0"
-            step="1"
-            required
-            value={startKms}
-            onChange={(e) => setStartKms(e.target.value)}
-            placeholder="e.g. 15000"
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
           />
         </Field>
@@ -2193,120 +2364,6 @@ function SwapForm({
       >
         {saving ? "Saving…" : "Record swap"}
       </button>
-    </form>
-  );
-}
-
-function KmsForm({
-  rentalId,
-  customerId,
-  onSaved,
-  onCancel,
-}: {
-  rentalId: string;
-  customerId: string;
-  onSaved: () => void;
-  onCancel: () => void;
-}) {
-  const today = new Date().toISOString().slice(0, 10);
-  const [kms, setKms] = useState("");
-  const [date, setDate] = useState(today);
-  const [note, setNote] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    const kmsNum = parseInt(kms, 10);
-    if (isNaN(kmsNum) || kmsNum < 0) {
-      setError("Enter a non-negative odometer reading.");
-      return;
-    }
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/rentals/${rentalId}/kms`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customer_id: customerId,
-          kms: kmsNum,
-          date,
-          note: note.trim() || undefined,
-        }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setError(body.error || "Failed to log odometer.");
-        return;
-      }
-      onSaved();
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <form
-      onSubmit={submit}
-      className="mt-3 bg-orange-50/60 border border-orange-200 rounded-lg p-3 space-y-2"
-    >
-      <div className="text-xs font-semibold text-orange-800">
-        Log Odometer Reading (km)
-      </div>
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-800 text-xs rounded-lg p-2">
-          {error}
-        </div>
-      )}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-        <Field label="Odometer (km) *">
-          <input
-            type="number"
-            min="0"
-            step="1"
-            required
-            value={kms}
-            onChange={(e) => setKms(e.target.value)}
-            placeholder="e.g. 15420"
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-          />
-        </Field>
-        <Field label="Date *">
-          <input
-            type="date"
-            required
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-          />
-        </Field>
-        <Field label="Note">
-          <input
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="e.g. regular checkup"
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-          />
-        </Field>
-      </div>
-      <div className="flex gap-2">
-        <button
-          type="submit"
-          disabled={saving}
-          className="bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-700 disabled:opacity-50"
-        >
-          {saving ? "Saving…" : "Record Odometer"}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={saving}
-          className="text-sm text-gray-600 hover:text-gray-800 px-4 py-2"
-        >
-          Cancel
-        </button>
-      </div>
     </form>
   );
 }
@@ -2496,17 +2553,15 @@ function toDraft(ids: CustomerIdView[]): IdDraft[] {
   if (ids.length === 0) {
     return [{ type: "aadhaar", number: "", originalSubmitted: false }];
   }
-  return ids.map((id) => ({
-    id: id.id,
-    type: id.type,
-    number: id.number,
-    originalSubmitted: id.originalSubmitted,
-    createdAt: id.createdAt,
+  return ids.map((r) => ({
+    id: r.id,
+    type: r.type,
+    number: r.number,
+    originalSubmitted: r.originalSubmitted,
+    createdAt: r.createdAt,
   }));
 }
 
-// ---------------------------------------------------------------------------
-// Driver App Sections
 // ---------------------------------------------------------------------------
 
 function DriverLoginSection({
@@ -2651,7 +2706,7 @@ function DriverLoginSection({
               </button>
             </div>
             <p className="text-xs text-amber-700 mt-2">
-              Make sure to share this with the driver now. You won't be able to see it again.
+              Make sure to share this with the driver now. You won&apos;t be able to see it again.
             </p>
             <button
               onClick={() => setShowPassword(null)}
@@ -2736,4 +2791,3 @@ function LastSeenSection({
     </section>
   );
 }
-

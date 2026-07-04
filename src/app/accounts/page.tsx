@@ -9,6 +9,7 @@ interface Account {
   name: string;
   created_at: string;
   balance: number;
+  non_cash?: boolean;
 }
 
 function formatSignedINR(n: number): string {
@@ -20,6 +21,7 @@ export default function AccountsPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
+  const [nonCash, setNonCash] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,7 +46,7 @@ export default function AccountsPage() {
     const res = await fetch("/api/accounts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: name.trim() }),
+      body: JSON.stringify({ name: name.trim(), non_cash: nonCash }),
     });
     setSaving(false);
     if (!res.ok) {
@@ -53,6 +55,7 @@ export default function AccountsPage() {
       return;
     }
     setName("");
+    setNonCash(false);
     setShowForm(false);
     fetchAccounts();
   };
@@ -68,7 +71,53 @@ export default function AccountsPage() {
     fetchAccounts();
   };
 
-  const totalBalance = accounts.reduce((s, a) => s + (a.balance || 0), 0);
+  const cashAccounts = accounts.filter((a) => !a.non_cash);
+  const nonCashAccounts = accounts.filter((a) => a.non_cash);
+  const totalBalance = cashAccounts.reduce((s, a) => s + (a.balance || 0), 0);
+
+  const renderAccount = (a: Account) => (
+    <div
+      key={a.id}
+      className="bg-white rounded-lg border border-gray-200 p-5"
+    >
+      <div className="flex items-center justify-between gap-4">
+        <Link
+          href={`/accounts/${a.id}`}
+          className="min-w-0 flex-1 hover:text-emerald-700"
+        >
+          <h2 className="font-semibold text-lg flex items-center gap-2">
+            {a.name}
+            {a.non_cash && (
+              <span className="text-[10px] font-medium uppercase tracking-wide text-amber-700 bg-amber-100 rounded px-1.5 py-0.5">
+                Non-cash
+              </span>
+            )}
+          </h2>
+          <p className="text-xs text-gray-500 mt-1">
+            Added {new Date(a.created_at).toLocaleDateString()}
+          </p>
+        </Link>
+        <div className="text-right shrink-0">
+          <p className="text-[11px] text-gray-500 uppercase tracking-wide">
+            {a.non_cash ? "Credited" : "Balance"}
+          </p>
+          <p
+            className={`font-semibold ${
+              a.balance < 0 ? "text-red-700" : "text-gray-900"
+            }`}
+          >
+            {formatSignedINR(a.balance || 0)}
+          </p>
+        </div>
+        <button
+          onClick={() => handleDelete(a)}
+          className="text-sm text-red-600 hover:text-red-800 font-medium shrink-0"
+        >
+          Delete
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <div>
@@ -105,6 +154,21 @@ export default function AccountsPage() {
               placeholder="e.g. Surbhi, Rajiv, HDFC bank"
             />
           </div>
+          <label className="flex items-start gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={nonCash}
+              onChange={(e) => setNonCash(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              Non-cash account (credits / adjustments)
+              <span className="block text-xs text-gray-500">
+                For rent waived or credited, not real money held. Excluded from
+                the total balance.
+              </span>
+            </span>
+          </label>
           <button
             type="submit"
             disabled={saving}
@@ -134,47 +198,20 @@ export default function AccountsPage() {
               {formatSignedINR(totalBalance)}
             </p>
             <p className="text-xs text-gray-500 mt-1">
-              Sum of current balances across all accounts.
+              Sum of current balances across cash accounts.
             </p>
           </div>
-          <div className="grid gap-4">
-            {accounts.map((a) => (
-              <div
-                key={a.id}
-                className="bg-white rounded-lg border border-gray-200 p-5"
-              >
-                <div className="flex items-center justify-between gap-4">
-                  <Link
-                    href={`/accounts/${a.id}`}
-                    className="min-w-0 flex-1 hover:text-emerald-700"
-                  >
-                    <h2 className="font-semibold text-lg">{a.name}</h2>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Added {new Date(a.created_at).toLocaleDateString()}
-                    </p>
-                  </Link>
-                  <div className="text-right shrink-0">
-                    <p className="text-[11px] text-gray-500 uppercase tracking-wide">
-                      Balance
-                    </p>
-                    <p
-                      className={`font-semibold ${
-                        a.balance < 0 ? "text-red-700" : "text-gray-900"
-                      }`}
-                    >
-                      {formatSignedINR(a.balance || 0)}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => handleDelete(a)}
-                    className="text-sm text-red-600 hover:text-red-800 font-medium shrink-0"
-                  >
-                    Delete
-                  </button>
-                </div>
+          <div className="grid gap-4">{cashAccounts.map(renderAccount)}</div>
+          {nonCashAccounts.length > 0 && (
+            <div className="mt-8">
+              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                Non-cash (credits / adjustments)
+              </h2>
+              <div className="grid gap-4">
+                {nonCashAccounts.map(renderAccount)}
               </div>
-            ))}
-          </div>
+            </div>
+          )}
         </>
       )}
     </div>
