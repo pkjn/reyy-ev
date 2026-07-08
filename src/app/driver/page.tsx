@@ -344,7 +344,7 @@ export default async function DriverHomePage(props: { searchParams?: Promise<{ l
           )}
           <button
             id="btn-logout"
-            className="inline-flex items-center justify-center px-5 py-2.5 bg-white text-slate-600 rounded-xl font-bold shadow-sm border border-slate-200"
+            className="hidden items-center justify-center px-5 py-2.5 bg-white text-slate-600 rounded-xl font-bold shadow-sm border border-slate-200"
           >
             {t.logout}
           </button>

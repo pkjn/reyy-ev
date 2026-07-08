@@ -32,11 +32,25 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
   }
 });
 
-export async function startLocationUpdates() {
+export async function checkLocationPermissions(): Promise<boolean> {
   const { status: fgStatus } = await Location.getForegroundPermissionsAsync();
   const { status: bgStatus } = await Location.getBackgroundPermissionsAsync();
+  return fgStatus === "granted" && bgStatus === "granted";
+}
 
-  if (fgStatus !== "granted" || bgStatus !== "granted") {
+export async function requestLocationPermissions(): Promise<boolean> {
+  const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
+  if (fgStatus !== "granted") {
+    return false;
+  }
+  const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
+  return bgStatus === "granted";
+}
+
+export async function startLocationUpdates() {
+  const isGranted = await checkLocationPermissions();
+
+  if (!isGranted) {
     console.warn("Location permissions not granted, cannot start updates");
     return;
   }
@@ -49,7 +63,7 @@ export async function startLocationUpdates() {
     distanceInterval: 0,
     foregroundService: {
       notificationTitle: "Reyy EV",
-      notificationBody: "Live tracking is active.",
+      notificationBody: "Rental is active.",
       notificationColor: "#10B981", // emerald-500
     },
     showsBackgroundLocationIndicator: true,
