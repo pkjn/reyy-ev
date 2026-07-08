@@ -99,7 +99,13 @@ export async function verifyDriverPassword(
   );
 
   const hash = (res.Item?.driverPasswordHash as string) || DUMMY_HASH;
-  return bcrypt.compare(password, hash);
+  
+  // Backward compatibility: try exact match first
+  const exactMatch = await bcrypt.compare(password, hash);
+  if (exactMatch) return true;
+
+  // Try uppercase match for case-insensitivity
+  return bcrypt.compare(password.toUpperCase(), hash);
 }
 
 // ---------------------------------------------------------------------------
@@ -110,7 +116,8 @@ export async function setDriverPassword(
   customerId: string,
   password: string
 ): Promise<void> {
-  const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+  // Hash the uppercase version so the driver can login regardless of case
+  const hash = await bcrypt.hash(password.toUpperCase(), BCRYPT_ROUNDS);
 
   // Read the customer profile to get their phone number.
   const profileRes = await ddb.send(

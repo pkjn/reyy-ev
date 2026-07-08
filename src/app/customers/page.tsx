@@ -41,6 +41,17 @@ export default function CustomersPage() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // Quick Add State
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [qaName, setQaName] = useState("");
+  const [qaPhone, setQaPhone] = useState("");
+  const [qaScootyLabel, setQaScootyLabel] = useState("");
+  const [qaStartDate, setQaStartDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [qaRate, setQaRate] = useState<string>("");
+  const [qaRateUnit, setQaRateUnit] = useState<string>("month");
+  const [qaSaving, setQaSaving] = useState(false);
+  const [qaError, setQaError] = useState("");
+
   const fetchCustomers = async () => {
     const res = await fetch("/api/customers");
     setCustomers(await res.json());
@@ -108,17 +119,137 @@ export default function CustomersPage() {
     }
   };
 
+  const handleQuickAddSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setQaSaving(true);
+    setQaError("");
+    try {
+      const rate = parseFloat(qaRate);
+      if (isNaN(rate) || rate < 0) {
+        setQaError("Valid rate is required.");
+        setQaSaving(false);
+        return;
+      }
+      
+      const res = await fetch("/api/customers/quick-add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: qaName,
+          phone: qaPhone,
+          scooty_label: qaScootyLabel,
+          start_date: qaStartDate,
+          rate,
+          rate_unit: qaRateUnit,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        setQaError(data.error || "Failed to quick add customer");
+        setQaSaving(false);
+        return;
+      }
+      
+      const data = await res.json();
+      
+      // Reset form
+      setQaName("");
+      setQaPhone("");
+      setQaScootyLabel("");
+      setQaStartDate(new Date().toISOString().split("T")[0]);
+      setQaRate("");
+      setQaRateUnit("month");
+      setShowQuickAdd(false);
+      
+      // Navigate to the new customer's page
+      router.push(`/customers/${data.customer_id}`);
+    } catch (err: unknown) {
+      setQaError(err instanceof Error ? err.message : "An error occurred");
+      setQaSaving(false);
+    }
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Customers</h1>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700"
-        >
-          {showForm ? "Cancel" : "+ Add Customer"}
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => { setShowQuickAdd(!showQuickAdd); setShowForm(false); }}
+            className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700"
+          >
+            {showQuickAdd ? "Cancel" : "⚡ Quick Add"}
+          </button>
+          <button
+            onClick={() => { setShowForm(!showForm); setShowQuickAdd(false); }}
+            className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700"
+          >
+            {showForm ? "Cancel" : "+ Add Customer"}
+          </button>
+        </div>
       </div>
+
+      {showQuickAdd && (
+        <form
+          onSubmit={handleQuickAddSubmit}
+          className="bg-indigo-50 rounded-lg border border-indigo-200 p-6 mb-6 space-y-5"
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-indigo-600 font-semibold text-lg">⚡ Quick Add Customer</span>
+            <span className="text-xs text-indigo-500 bg-indigo-100 px-2 py-0.5 rounded-full hidden sm:inline-block">Creates customer & rental instantly</span>
+          </div>
+
+          {qaError && (
+            <div className="bg-red-50 text-red-700 p-3 rounded-lg text-sm">
+              {qaError}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+              <input type="text" value={qaName} onChange={(e) => setQaName(e.target.value)} required className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Customer name" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number *</label>
+              <input type="tel" value={qaPhone} onChange={(e) => setQaPhone(e.target.value)} required className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="e.g. 9876543210" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Scooty Number / Label *</label>
+              <input type="text" value={qaScootyLabel} onChange={(e) => setQaScootyLabel(e.target.value)} required className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Default password will be this" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Start Date *</label>
+              <input type="date" value={qaStartDate} onChange={(e) => setQaStartDate(e.target.value)} required className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Rate *</label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-500 sm:text-sm">₹</span>
+                <input type="number" step="0.01" min="0" value={qaRate} onChange={(e) => setQaRate(e.target.value)} required className="w-full border border-gray-300 rounded-lg pl-7 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="0.00" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Rate Unit *</label>
+              <select value={qaRateUnit} onChange={(e) => setQaRateUnit(e.target.value)} required className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <option value="day">per day</option>
+                <option value="week">per week</option>
+                <option value="month">per month</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 mt-2">
+            <button type="submit" disabled={qaSaving} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
+              {qaSaving ? "Saving..." : "Quick Add →"}
+            </button>
+            <span className="text-xs text-indigo-600 font-medium">
+              Password automatically set to Scooty Number.
+            </span>
+          </div>
+        </form>
+      )}
 
       {showForm && (
         <form
