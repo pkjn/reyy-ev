@@ -5,12 +5,13 @@ import { useRouter } from "expo-router";
 import * as Linking from "expo-linking";
 import { getToken, clearToken } from "../services/auth";
 import { API_BASE_URL } from "../config/env";
-import { startLocationUpdates } from "../services/location";
+import { startLocationUpdates, checkLocationPermissions, requestLocationPermissions, forceLocationPush } from "../services/location";
 import { useLanguage } from "../src/context/LanguageContext";
 import { t } from "../src/utils/i18n";
 
 export default function HomeScreen() {
   const [token, setToken] = useState<string | null>(null);
+  const [locationGranted, setLocationGranted] = useState<boolean | null>(null);
   const router = useRouter();
   const webViewRef = useRef<WebView>(null);
   const appState = useRef(AppState.currentState);
@@ -22,19 +23,31 @@ export default function HomeScreen() {
       const t = await getToken();
       if (!t) {
         router.replace("/login");
-      } else {
-        setToken(t);
-        // Start background location service when we enter home screen
+        return;
+      }
+      setToken(t);
+      
+      let granted = await checkLocationPermissions();
+      if (!granted) {
+        granted = await requestLocationPermissions();
+      }
+      
+      setLocationGranted(granted);
+      if (granted) {
         await startLocationUpdates();
       }
     }
     load();
 
-    const subscription = AppState.addEventListener("change", (nextAppState: AppStateStatus) => {
+    const subscription = AppState.addEventListener("change", async (nextAppState: AppStateStatus) => {
       // Force an immediate location push when app comes to foreground
       if (appState.current.match(/inactive|background/) && nextAppState === "active") {
-        // We will implement forceLocationPush inside services/location.ts
-        // forceLocationPush(); 
+        const granted = await checkLocationPermissions();
+        setLocationGranted(granted);
+        if (granted) {
+          await startLocationUpdates();
+          await forceLocationPush();
+        }
       }
       appState.current = nextAppState;
     });
@@ -44,10 +57,38 @@ export default function HomeScreen() {
     };
   }, []);
 
-  if (isLoading || !token) {
+  if (isLoading || !token || locationGranted === null) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#059669" />
+      </View>
+    );
+  }
+
+  if (locationGranted === false) {
+    return (
+      <View style={styles.permissionContainer}>
+        <Text style={styles.permissionText}>
+          Location access is required for tracking the rental.
+        </Text>
+        <TouchableOpacity
+          style={styles.permissionButton}
+          onPress={async () => {
+            const granted = await requestLocationPermissions();
+            setLocationGranted(granted);
+            if (granted) {
+              await startLocationUpdates();
+            }
+          }}
+        >
+          <Text style={styles.permissionButtonText}>Request Permission</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.permissionButton, styles.settingsButton]}
+          onPress={() => Linking.openSettings()}
+        >
+          <Text style={[styles.permissionButtonText, styles.settingsButtonText]}>Open Settings</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -118,5 +159,40 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontWeight: "bold",
     fontSize: 14,
+  },
+  permissionContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+    backgroundColor: "#ffffff",
+  },
+  permissionText: {
+    fontSize: 18,
+    textAlign: "center",
+    marginBottom: 24,
+    color: "#374151",
+  },
+  permissionButton: {
+    backgroundColor: "#059669",
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    marginBottom: 12,
+    width: "100%",
+    alignItems: "center",
+  },
+  permissionButtonText: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  settingsButton: {
+    backgroundColor: "#f3f4f6",
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+  },
+  settingsButtonText: {
+    color: "#374151",
   },
 });
