@@ -1,17 +1,21 @@
 import { useState, useEffect, useRef } from "react";
-import { View, StyleSheet, ActivityIndicator, AppState, AppStateStatus } from "react-native";
+import { View, StyleSheet, ActivityIndicator, AppState, AppStateStatus, TouchableOpacity, Text } from "react-native";
 import { WebView } from "react-native-webview";
 import { useRouter } from "expo-router";
 import * as Linking from "expo-linking";
 import { getToken, clearToken } from "../services/auth";
 import { API_BASE_URL } from "../config/env";
 import { startLocationUpdates } from "../services/location";
+import { useLanguage } from "../src/context/LanguageContext";
+import { t } from "../src/utils/i18n";
 
 export default function HomeScreen() {
   const [token, setToken] = useState<string | null>(null);
   const router = useRouter();
   const webViewRef = useRef<WebView>(null);
   const appState = useRef(AppState.currentState);
+
+  const { language, setLanguage, isLoading } = useLanguage();
 
   useEffect(() => {
     async function load() {
@@ -40,7 +44,7 @@ export default function HomeScreen() {
     };
   }, []);
 
-  if (!token) {
+  if (isLoading || !token) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#059669" />
@@ -48,12 +52,20 @@ export default function HomeScreen() {
     );
   }
 
-  // The WebView hits /driver/auth?token=<JWT>.
-  // The server sets the cookie and redirects to /driver.
-  const uri = `${API_BASE_URL}/driver/auth?token=${token}`;
+  // The WebView hits /driver/auth?token=<JWT>&lang=<lang>.
+  // The server sets the cookie and redirects to /driver?lang=<lang>.
+  const uri = `${API_BASE_URL}/driver/auth?token=${token}&lang=${language}`;
+
+  const toggleLanguage = () => {
+    setLanguage(language === 'en' ? 'hi' : 'en');
+  };
 
   return (
     <View style={styles.container}>
+      <TouchableOpacity style={styles.langToggle} onPress={toggleLanguage}>
+        <Text style={styles.langToggleText}>{t(language, "toggleLang")}</Text>
+      </TouchableOpacity>
+
       <WebView
         ref={webViewRef}
         source={{ uri }}
@@ -91,5 +103,20 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+  },
+  langToggle: {
+    position: "absolute",
+    top: 50,
+    right: 24,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    zIndex: 10,
+  },
+  langToggleText: {
+    color: "#ffffff",
+    fontWeight: "bold",
+    fontSize: 14,
   },
 });

@@ -1,0 +1,16 @@
+[
+  {
+    "id": "refer_and_earn_1",
+    "title_en": "Refer & Earn",
+    "title_hi": "रेफर करें और कमाएं",
+    "subtitle_en": "Get 1 Day FREE Rent for every friend who joins!",
+    "subtitle_hi": "हर नए दोस्त के जुड़ने पर 1 दिन का रेंट बिल्कुल फ्री पाएं!",
+    "icon": "🎁",
+    "backgroundColor": "#ecfdf5",
+    "textColor": "#065f46",
+    "borderColor": "#a7f3d0",
+    "callToAction_en": "Share Now",
+    "callToAction_hi": "अभी शेयर करें",
+    "actionUrl": "tel:support"
+  }
+]

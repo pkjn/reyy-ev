@@ -3,6 +3,7 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { Alert } from "react-native";
 import { isLoggedIn, isOnboardingComplete } from "../services/auth";
 import ErrorBoundary from "../src/components/ErrorBoundary";
+import { LanguageProvider } from "../src/context/LanguageContext";
 
 // ErrorUtils is a React Native global — declare it for TypeScript.
 declare const ErrorUtils: {
@@ -72,11 +73,13 @@ export default function RootLayout() {
 
   return (
     <ErrorBoundary>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="login" />
-        <Stack.Screen name="onboarding" />
-        <Stack.Screen name="home" />
-      </Stack>
+      <LanguageProvider>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="login" />
+          <Stack.Screen name="onboarding" />
+          <Stack.Screen name="home" />
+        </Stack>
+      </LanguageProvider>
     </ErrorBoundary>
   );
 }

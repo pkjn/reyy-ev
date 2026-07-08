@@ -2,22 +2,27 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Permiss
 import { useRouter } from "expo-router";
 import * as Location from "expo-location";
 import { setOnboardingComplete } from "../services/auth";
+import { useLanguage } from "../src/context/LanguageContext";
+import { t } from "../src/utils/i18n";
 
 export default function OnboardingScreen() {
   const router = useRouter();
+  const { language, setLanguage, isLoading } = useLanguage();
+
+  if (isLoading) return null;
 
   const handlePermissionsAndContinue = async () => {
     // 1. Foreground Location
     const { status: fg } = await Location.requestForegroundPermissionsAsync();
     if (fg !== "granted") {
-      alert("Foreground location permission is required.");
+      alert(t(language, "fgError"));
       return;
     }
     
     // 2. Background Location
     const { status: bg } = await Location.requestBackgroundPermissionsAsync();
     if (bg !== "granted") {
-      alert("Background location permission is required for live tracking.");
+      alert(t(language, "bgError"));
       return;
     }
 
@@ -27,7 +32,7 @@ export default function OnboardingScreen() {
         PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
       );
       if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
-        alert("Notification permission is required for background tracking.");
+        alert(t(language, "notifError"));
         return;
       }
     }
@@ -37,33 +42,41 @@ export default function OnboardingScreen() {
     router.replace("/home");
   };
 
+  const toggleLanguage = () => {
+    setLanguage(language === 'en' ? 'hi' : 'en');
+  };
+
   return (
     <View style={styles.container}>
+      <TouchableOpacity style={styles.langToggle} onPress={toggleLanguage}>
+        <Text style={styles.langToggleText}>{t(language, "toggleLang")}</Text>
+      </TouchableOpacity>
+
       <View style={styles.header}>
-        <Text style={styles.title}>Welcome to Reyy EV</Text>
-        <Text style={styles.subtitle}>Let's get you set up</Text>
+        <Text style={styles.title}>{t(language, "welcomeTitle")}</Text>
+        <Text style={styles.subtitle}>{t(language, "welcomeDesc")}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Background Tracking Setup</Text>
+          <Text style={styles.cardTitle}>{t(language, "obTitle")}</Text>
           
           <Text style={styles.cardText}>
-            Reyy EV collects location data to enable live fleet tracking and route monitoring even when the app is closed or not in use.
+            {t(language, "obDesc1")}
           </Text>
           
           <Text style={styles.cardText}>
-            To ensure accurate mileage and active tracking while you are on duty, please grant <Text style={{fontWeight: "bold"}}>Always Allow</Text> location access and enable notifications when prompted.
+            {t(language, "obDesc2")}
           </Text>
 
           <View style={styles.instructionBox}>
             <Text style={styles.instructionText}>
-              Note for Xiaomi/Vivo/Oppo devices: Please ensure this app is excluded from battery optimization in your phone settings to prevent tracking dropouts.
+              {t(language, "obNote")}
             </Text>
           </View>
 
           <TouchableOpacity style={styles.button} onPress={handlePermissionsAndContinue}>
-            <Text style={styles.buttonText}>Grant Access & Continue</Text>
+            <Text style={styles.buttonText}>{t(language, "grantAccess")}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -76,8 +89,23 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#f9fafb",
   },
+  langToggle: {
+    position: "absolute",
+    top: 60,
+    right: 24,
+    backgroundColor: "#e5e7eb",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    zIndex: 10,
+  },
+  langToggleText: {
+    color: "#374151",
+    fontWeight: "bold",
+    fontSize: 14,
+  },
   header: {
-    paddingTop: 60,
+    paddingTop: 80,
     paddingBottom: 20,
     paddingHorizontal: 24,
     backgroundColor: "#ffffff",

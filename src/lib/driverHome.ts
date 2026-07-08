@@ -108,7 +108,7 @@ export async function buildDriverHomePayload(
 
   return {
     customer_id: customerId,
-    customer_name: (profile.customerName as string) || "",
+    customer_name: (profile.name as string) || "",
     phone: phones[0] || "",
     rental: {
       id: rentalId,

@@ -3,16 +3,22 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator,
 import { useRouter } from "expo-router";
 import { login } from "../services/api";
 import { saveToken } from "../services/auth";
+import { useLanguage } from "../src/context/LanguageContext";
+import { t } from "../src/utils/i18n";
 
 export default function LoginScreen() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  
+  const { language, setLanguage, isLoading } = useLanguage();
+
+  if (isLoading) return null;
 
   const handleLogin = async () => {
     if (!phone || !password) {
-      Alert.alert("Error", "Please enter phone and password");
+      Alert.alert(t(language, "loginErrorTitle"), t(language, "loginErrorMissing"));
       return;
     }
 
@@ -20,34 +26,36 @@ export default function LoginScreen() {
     try {
       const data = await login(phone, password);
 
-      // Save token — wrapped separately because expo-secure-store can throw
-      // native exceptions in APK builds if the keychain isn't ready.
       try {
         await saveToken(data.token);
       } catch (storeErr) {
         console.error("Failed to save token to SecureStore:", storeErr);
         Alert.alert(
-          "Storage Error",
-          "Could not save login credentials. Please try again."
+          t(language, "loginStorageError"),
+          t(language, "loginStorageDesc")
         );
         return;
       }
 
-      // Don't call router.replace() here — _layout.tsx watches `segments`
-      // and will automatically route to /onboarding or /home once it detects
-      // the token via isLoggedIn(). Calling replace from both login.tsx AND
-      // _layout.tsx simultaneously causes a race-condition crash on Android.
       router.replace("/onboarding");
     } catch (err) {
       console.error("Login error:", err);
-      Alert.alert("Login Failed", err instanceof Error ? err.message : "Unknown error");
+      Alert.alert(t(language, "loginFailed"), err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLoading(false);
     }
   };
 
+  const toggleLanguage = () => {
+    setLanguage(language === 'en' ? 'hi' : 'en');
+  };
+
   return (
     <View style={styles.container}>
+      <TouchableOpacity style={styles.langToggle} onPress={toggleLanguage}>
+        <Text style={styles.langToggleText}>{t(language, "toggleLang")}</Text>
+      </TouchableOpacity>
+
       <View style={styles.header}>
         <Image 
           source={require("../assets/images/reyy-ev-logo.jpeg")} 
@@ -55,13 +63,13 @@ export default function LoginScreen() {
           resizeMode="contain" 
         />
         <Text style={styles.title}>Reyy EV</Text>
-        <Text style={styles.subtitle}>Driver App</Text>
+        <Text style={styles.subtitle}>{t(language, "driverApp")}</Text>
       </View>
 
       <View style={styles.form}>
         <TextInput
           style={styles.input}
-          placeholder="Phone Number (10 digits)"
+          placeholder={t(language, "phonePlaceholder")}
           placeholderTextColor="#9ca3af"
           keyboardType="phone-pad"
           value={phone}
@@ -70,7 +78,7 @@ export default function LoginScreen() {
         />
         <TextInput
           style={styles.input}
-          placeholder="Password"
+          placeholder={t(language, "passwordPlaceholder")}
           placeholderTextColor="#9ca3af"
           secureTextEntry
           value={password}
@@ -86,7 +94,7 @@ export default function LoginScreen() {
           {loading ? (
             <ActivityIndicator color="#ffffff" />
           ) : (
-            <Text style={styles.buttonText}>Login</Text>
+            <Text style={styles.buttonText}>{t(language, "loginBtn")}</Text>
           )}
         </TouchableOpacity>
       </View>
@@ -100,6 +108,21 @@ const styles = StyleSheet.create({
     backgroundColor: "#f9fafb",
     padding: 24,
     justifyContent: "center",
+  },
+  langToggle: {
+    position: "absolute",
+    top: 60,
+    right: 24,
+    backgroundColor: "#e5e7eb",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    zIndex: 10,
+  },
+  langToggleText: {
+    color: "#374151",
+    fontWeight: "bold",
+    fontSize: 14,
   },
   header: {
     alignItems: "center",

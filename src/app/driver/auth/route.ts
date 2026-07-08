@@ -36,9 +36,15 @@ export async function GET(req: Request) {
   // HTTPS. In production (Vercel), always use Secure.
   const isProduction = process.env.NODE_ENV === "production";
 
+  const lang = url.searchParams.get("lang");
   const host = req.headers.get("host") || "localhost:3000";
   const protocol = req.headers.get("x-forwarded-proto") || "http";
-  const response = NextResponse.redirect(new URL("/driver", `${protocol}://${host}`));
+  
+  const targetUrl = new URL("/driver", `${protocol}://${host}`);
+  if (lang) {
+    targetUrl.searchParams.set("lang", lang);
+  }
+  const response = NextResponse.redirect(targetUrl);
   response.cookies.set("reyy_driver", token, {
     httpOnly: true,
     secure: isProduction,
