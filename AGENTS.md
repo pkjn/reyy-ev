@@ -10,5 +10,6 @@ Here are the 2 repos where changes are committed:
 2. `naman` (origin): `https://github.com/raqlaylabs/reyy-ev/commits/main/`
 
 **IMPORTANT**: 
-- Know which branch/repo to commit to based on the task (e.g., driver-app changes go to the personal repo's driver-app branch).
+- For the `personal` repo, commit and push to the branch corresponding to the task (e.g., `driver-app`).
+- For the `naman` repo (origin), **ALWAYS push to the `main` branch**.
 - **ALWAYS ASK** the user before committing any changes.
