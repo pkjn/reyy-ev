@@ -69,7 +69,7 @@ export default function HomeScreen() {
     return (
       <View style={styles.permissionContainer}>
         <Text style={styles.permissionText}>
-          Location access is required for tracking the rental.
+          For the application to work correctly, we need some permissions. Please allow them, otherwise the application will not work.
         </Text>
         <TouchableOpacity
           style={styles.permissionButton}
@@ -119,8 +119,8 @@ export default function HomeScreen() {
           }
         }}
         onShouldStartLoadWithRequest={(request) => {
-          // Handle tel: and mailto: links natively rather than inside WebView
-          if (request.url.startsWith("tel:") || request.url.startsWith("mailto:")) {
+          // Handle external links natively rather than inside WebView
+          if (request.url.startsWith("tel:") || request.url.startsWith("mailto:") || request.url.startsWith("whatsapp:")) {
             Linking.openURL(request.url).catch(() => {});
             return false;
           }
