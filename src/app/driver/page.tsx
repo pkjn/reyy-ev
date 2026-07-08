@@ -11,6 +11,8 @@ import { buildDriverHomePayload } from "@/lib/driverHome";
 import fs from "fs/promises";
 import path from "path";
 
+// Vercel build trigger
+
 function formatDate(dateStr: string, lang: string): string {
   const d = new Date(dateStr + "T00:00:00");
   return d.toLocaleDateString(lang === "hi" ? "hi-IN" : "en-IN", {
