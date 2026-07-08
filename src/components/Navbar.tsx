@@ -12,12 +12,12 @@ export function Navbar() {
   }
 
   return (
-    <nav className="bg-white border-b border-gray-200 px-6 py-4">
-      <div className="max-w-6xl mx-auto flex items-center justify-between">
-        <Link href="/" className="text-xl font-bold text-emerald-600">
+    <nav className="bg-white border-b border-gray-200 px-4 md:px-6 py-4">
+      <div className="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0">
+        <Link href="/" className="text-xl font-bold text-emerald-600 shrink-0">
           Reyy EV
         </Link>
-        <div className="flex gap-6">
+        <div className="flex gap-4 sm:gap-6 overflow-x-auto whitespace-nowrap pb-1 sm:pb-0">
           <Link
             href="/"
             className="text-sm font-medium text-gray-600 hover:text-gray-900"
