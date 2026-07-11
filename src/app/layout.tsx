@@ -60,6 +60,12 @@ export default function RootLayout({
                 Rentals
               </Link>
               <Link
+                href="/vehicles"
+                className="text-sm font-medium text-gray-600 hover:text-gray-900"
+              >
+                Vehicles
+              </Link>
+              <Link
                 href="/accounts"
                 className="text-sm font-medium text-gray-600 hover:text-gray-900"
               >

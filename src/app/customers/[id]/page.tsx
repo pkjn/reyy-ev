@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatINR, RATE_UNITS, RateUnit } from "@/lib/billing";
 import { ID_TYPES, IdType, ID_TYPE_LABELS } from "@/lib/idTypes";
+import { Vehicle } from "@/lib/vehicles";
 
 interface AccountOption {
   id: string;
@@ -123,6 +124,7 @@ export default function CustomerDetailPage({
   const router = useRouter();
   const [data, setData] = useState<CustomerDetail | null>(null);
   const [accounts, setAccounts] = useState<AccountOption[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingLoc, setEditingLoc] = useState(false);
@@ -158,6 +160,10 @@ export default function CustomerDetailPage({
       .then((r) => (r.ok ? r.json() : []))
       .then(setAccounts)
       .catch(() => setAccounts([]));
+    fetch("/api/vehicles")
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setVehicles)
+      .catch(() => setVehicles([]));
   }, [refresh]);
 
   if (loading) return <p className="text-gray-500">Loading...</p>;
@@ -274,6 +280,7 @@ export default function CustomerDetailPage({
         customerName={data.name}
         rentals={data.rentals}
         accounts={accounts}
+        vehicles={vehicles}
         onChange={refresh}
       />
     </div>
@@ -657,12 +664,14 @@ function RentalsSection({
   customerName,
   rentals,
   accounts,
+  vehicles,
   onChange,
 }: {
   customerId: string;
   customerName: string;
   rentals: RentalView[];
   accounts: AccountOption[];
+  vehicles: Vehicle[];
   onChange: () => void;
 }) {
   const [showForm, setShowForm] = useState(false);
@@ -684,6 +693,7 @@ function RentalsSection({
           customerId={customerId}
           customerName={customerName}
           accounts={accounts}
+          vehicles={vehicles}
           onSaved={() => {
             setShowForm(false);
             onChange();
@@ -703,6 +713,7 @@ function RentalsSection({
               rental={r}
               customerId={customerId}
               accounts={accounts}
+              vehicles={vehicles}
               onChange={onChange}
             />
           ))}
@@ -712,15 +723,51 @@ function RentalsSection({
   );
 }
 
+// A dropdown of registered vehicles by plate. Vehicles already out on an
+// active rental are flagged "in use" but still selectable (e.g. correcting a
+// mistake), except the current one on a swap which is excluded by the caller.
+function VehicleSelect({
+  vehicles,
+  value,
+  onChange,
+  exclude,
+}: {
+  vehicles: Vehicle[];
+  value: string;
+  onChange: (v: string) => void;
+  exclude?: string;
+}) {
+  const options = vehicles.filter((v) => v.number !== exclude);
+  return (
+    <select
+      required
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+    >
+      <option value="">Select vehicle…</option>
+      {options.map((v) => (
+        <option key={v.id} value={v.number}>
+          {v.number}
+          {v.make ? ` — ${v.make}` : ""}
+          {v.assignment ? " (in use)" : ""}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 function NewRentalForm({
   customerId,
   customerName,
   accounts,
+  vehicles,
   onSaved,
 }: {
   customerId: string;
   customerName: string;
   accounts: AccountOption[];
+  vehicles: Vehicle[];
   onSaved: () => void;
 }) {
   const today = new Date().toISOString().slice(0, 10);
@@ -808,14 +855,22 @@ function NewRentalForm({
       className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3"
     >
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Field label="Scooty (number / model) *">
-          <input
-            required
-            value={scootyLabel}
-            onChange={(e) => setScootyLabel(e.target.value)}
-            placeholder="MH12 AB 1234"
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-          />
+        <Field label="Vehicle *">
+          {vehicles.length === 0 ? (
+            <p className="text-sm text-gray-500 border border-gray-200 rounded-lg px-3 py-2 bg-white">
+              No vehicles yet —{" "}
+              <Link href="/vehicles" className="text-emerald-700 underline">
+                add one
+              </Link>{" "}
+              first.
+            </p>
+          ) : (
+            <VehicleSelect
+              vehicles={vehicles}
+              value={scootyLabel}
+              onChange={setScootyLabel}
+            />
+          )}
         </Field>
         <Field label="Start date *">
           <input
@@ -1003,11 +1058,13 @@ function RentalCard({
   rental,
   customerId,
   accounts,
+  vehicles,
   onChange,
 }: {
   rental: RentalView;
   customerId: string;
   accounts: AccountOption[];
+  vehicles: Vehicle[];
   onChange: () => void;
 }) {
   const [showPayForm, setShowPayForm] = useState(false);
@@ -1343,6 +1400,7 @@ function RentalCard({
           rentalId={rental.id}
           customerId={customerId}
           currentLabel={rental.scootyLabel}
+          vehicles={vehicles}
           onSaved={() => {
             setShowSwapForm(false);
             onChange();
@@ -2030,11 +2088,13 @@ function SwapForm({
   rentalId,
   customerId,
   currentLabel,
+  vehicles,
   onSaved,
 }: {
   rentalId: string;
   customerId: string;
   currentLabel: string;
+  vehicles: Vehicle[];
   onSaved: () => void;
 }) {
   const today = new Date().toISOString().slice(0, 10);
@@ -2088,13 +2148,12 @@ function SwapForm({
         </div>
       )}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-        <Field label="New scooty *">
-          <input
+        <Field label="New vehicle *">
+          <VehicleSelect
+            vehicles={vehicles}
             value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            required
-            placeholder="MH12 XY 9999"
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            onChange={setLabel}
+            exclude={currentLabel}
           />
         </Field>
         <Field label="Swap date *">
