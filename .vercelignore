@@ -1,0 +1,4 @@
+# The Expo/React Native driver app is not part of the Vercel (Next.js) deploy —
+# it ships as a sideloadable APK built by .github/workflows/driver-android.yml.
+# Keep it out of the Vercel build context so it isn't uploaded on every deploy.
+driver-app
