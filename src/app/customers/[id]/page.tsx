@@ -105,6 +105,15 @@ interface CustomerDetail {
   created_at: string;
   photos: Photo[];
   rentals: RentalView[];
+  driver_password_set: boolean;
+  live_tracker: {
+    lat: number;
+    lng: number;
+    battery: number | null;
+    captured_at: string;
+    received_at: string;
+    seconds_ago: number;
+  } | null;
 }
 
 // Turn a saved house location (a pasted Maps URL, or coordinates / free text)
@@ -262,6 +271,14 @@ export default function CustomerDetailPage({
         notes={data.notes}
         onChange={refresh}
       />
+
+      <DriverLoginSection
+        customerId={id}
+        passwordSet={data.driver_password_set}
+        onChange={refresh}
+      />
+
+      <LastSeenSection tracker={data.live_tracker} />
 
       <IdsSection
         customerId={id}
@@ -2377,4 +2394,246 @@ function toDraft(ids: CustomerIdView[]): IdDraft[] {
     originalSubmitted: r.originalSubmitted,
     createdAt: r.createdAt,
   }));
+}
+
+function DriverLoginSection({
+  customerId,
+  passwordSet,
+  onChange,
+}: {
+  customerId: string;
+  passwordSet: boolean;
+  onChange: () => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState<string | null>(null);
+  const [manualEntry, setManualEntry] = useState(false);
+  const [passwordDraft, setPasswordDraft] = useState("");
+
+  async function handleGenerate() {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/customers/${customerId}/set-driver-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ generate: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      setShowPassword(data.password);
+      onChange();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to generate password");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSetManual() {
+    if (passwordDraft.length < 6) {
+      alert("Password must be at least 6 characters");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/customers/${customerId}/set-driver-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: passwordDraft }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error);
+      }
+      setManualEntry(false);
+      setPasswordDraft("");
+      onChange();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to set password");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <section className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="bg-gray-50 border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+        <h2 className="font-semibold text-gray-900">Driver Login</h2>
+        <span
+          className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+            passwordSet
+              ? "bg-emerald-100 text-emerald-800"
+              : "bg-gray-200 text-gray-600"
+          }`}
+        >
+          {passwordSet ? "Password Set" : "No Access"}
+        </span>
+      </div>
+
+      <div className="p-4 space-y-4">
+        {manualEntry ? (
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={passwordDraft}
+              onChange={(e) => setPasswordDraft(e.target.value)}
+              placeholder="New password (min 6 chars)"
+              className="flex-1 border border-gray-300 rounded px-3 py-1.5 text-sm"
+              autoFocus
+            />
+            <button
+              onClick={handleSetManual}
+              disabled={loading}
+              className="bg-emerald-600 text-white px-3 py-1.5 rounded text-sm font-medium hover:bg-emerald-700 disabled:opacity-50"
+            >
+              Save
+            </button>
+            <button
+              onClick={() => {
+                setManualEntry(false);
+                setPasswordDraft("");
+              }}
+              className="text-gray-500 hover:text-gray-700 text-sm font-medium px-2"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <div className="flex gap-3">
+            <button
+              onClick={handleGenerate}
+              disabled={loading}
+              className="flex-1 bg-gray-100 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-200 disabled:opacity-50"
+            >
+              Generate Password
+            </button>
+            <button
+              onClick={() => setManualEntry(true)}
+              disabled={loading}
+              className="flex-1 border border-gray-300 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+            >
+              Set Manually
+            </button>
+          </div>
+        )}
+
+        {showPassword && (
+          <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-4">
+            <p className="text-sm text-amber-800 mb-2 font-medium">
+              New Password Generated
+            </p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 bg-white border border-amber-300 px-3 py-2 rounded font-mono text-lg text-center">
+                {showPassword}
+              </code>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(showPassword);
+                  alert("Copied to clipboard");
+                }}
+                className="bg-white border border-amber-300 px-3 py-2 rounded text-sm font-medium hover:bg-amber-50"
+              >
+                Copy
+              </button>
+            </div>
+            <p className="text-xs text-amber-700 mt-2">
+              Make sure to share this with the driver now. You won&apos;t be able to see it again.
+            </p>
+            <button
+              onClick={() => setShowPassword(null)}
+              className="mt-3 w-full border border-amber-300 text-amber-800 py-1.5 rounded text-sm font-medium hover:bg-amber-100"
+            >
+              Done
+            </button>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function LastSeenSection({
+  tracker,
+}: {
+  tracker?: CustomerDetail["live_tracker"];
+}) {
+  if (!tracker) {
+    return (
+      <section className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="bg-gray-50 border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+          <h2 className="font-semibold text-gray-900">Live Tracker</h2>
+          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+            Offline
+          </span>
+        </div>
+        <div className="p-4 text-sm text-gray-500 italic">
+          No live tracking data available. Driver app may be offline.
+        </div>
+      </section>
+    );
+  }
+
+  const isStale = tracker.seconds_ago > 600; // > 10 min
+
+  let timeAgo = "Just now";
+  if (tracker.seconds_ago >= 60) {
+    const mins = Math.floor(tracker.seconds_ago / 60);
+    if (mins >= 60) {
+      const hrs = Math.floor(mins / 60);
+      timeAgo = `${hrs}h ago`;
+    } else {
+      timeAgo = `${mins}m ago`;
+    }
+  }
+
+  const gmapsLink = `https://www.google.com/maps/place/${tracker.lat},${tracker.lng}`;
+
+  return (
+    <section className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="bg-gray-50 border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+        <h2 className="font-semibold text-gray-900">Live Tracker</h2>
+        <span
+          className={`px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1.5 ${
+            isStale
+              ? "bg-red-100 text-red-800"
+              : "bg-emerald-100 text-emerald-800"
+          }`}
+        >
+          {!isStale && (
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          )}
+          {timeAgo}
+        </span>
+      </div>
+      <div className="p-4 grid grid-cols-2 gap-4">
+        <div>
+          <p className="text-xs text-gray-500 mb-1">Battery</p>
+          <p className="text-sm font-medium text-gray-900">
+            {tracker.battery !== null ? `${tracker.battery}%` : "Unknown"}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-500 mb-1">Location</p>
+          <a
+            href={gmapsLink}
+            target="_blank"
+            rel="noreferrer"
+            className="text-sm font-medium text-emerald-600 hover:underline flex items-center gap-1"
+          >
+            Open in Maps ↗
+          </a>
+        </div>
+        <div className="col-span-2 mt-2 pt-3 border-t border-gray-100">
+          <p className="text-xs text-gray-500 mb-1">Last Updated</p>
+          <p className="text-sm font-medium text-gray-900">
+            {tracker.captured_at && !isNaN(new Date(tracker.captured_at).getTime()) ? new Date(tracker.captured_at).toLocaleString(undefined, {
+              dateStyle: "medium",
+              timeStyle: "short",
+            }) : "Unknown"}
+          </p>
+        </div>
+      </div>
+    </section>
+  );
 }

@@ -46,3 +46,13 @@ export function photoCategoryLabel(c: string): string {
   const found = PHOTO_CATEGORIES.find((p) => p.value === c);
   return found ? found.label : c;
 }
+
+export interface LocationLog {
+  id: string;
+  rentalId: string;
+  latitude: number;
+  longitude: number;
+  batteryLevel?: number;
+  timestamp: string;
+  createdAt: string;
+}

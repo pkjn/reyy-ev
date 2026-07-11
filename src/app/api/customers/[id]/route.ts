@@ -229,6 +229,25 @@ export async function GET(
     refundsByRental.set(r.rentalId, list);
   }
 
+  const locationLogItems = items.filter(
+    (i) => typeof i.SK === "string" && i.SK.startsWith("LOCATION#")
+  );
+  const locationLogs = locationLogItems.map((l) => ({
+    id: (l.SK as string).split("#")[2] || (l.SK as string).split("#")[1] || "",
+    rentalId: l.rentalId as string,
+    latitude: (l.lat as number) ?? (l.latitude as number),
+    longitude: (l.lng as number) ?? (l.longitude as number),
+    batteryLevel: l.batteryLevel as number | undefined,
+    timestamp: (l.capturedAt as string) ?? (l.timestamp as string) ?? (l.receivedAt as string),
+    createdAt: (l.receivedAt as string) ?? (l.createdAt as string) ?? "",
+  }));
+  const locationsByRental = new Map<string, typeof locationLogs>();
+  for (const l of locationLogs) {
+    const list = locationsByRental.get(l.rentalId) || [];
+    list.push(l);
+    locationsByRental.set(l.rentalId, list);
+  }
+
   const rentals = rentalItems
     .map((r) => {
       const rental: Rental = {
@@ -255,6 +274,9 @@ export async function GET(
       const deposits = (depositsByRental.get(rental.id) || []).sort((a, b) =>
         a.date < b.date ? 1 : a.date > b.date ? -1 : 0
       );
+      const locationLogs = (locationsByRental.get(rental.id) || []).sort((a, b) =>
+        a.timestamp < b.timestamp ? 1 : -1
+      );
       // Scooty assignment history — synthesise the first entry from the legacy
       // single label for rentals created before swaps were tracked.
       const scooties =
@@ -272,7 +294,7 @@ export async function GET(
               },
             ];
       const balances = computeRentalBalances(rental, payments);
-      return { ...rental, payments, refunds, deposits, scooties, balances };
+      return { ...rental, payments, refunds, deposits, scooties, balances, locationLogs };
     })
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 
@@ -281,6 +303,32 @@ export async function GET(
     : typeof profile.phone === "string" && (profile.phone as string).trim()
       ? [profile.phone as string]
       : [];
+
+  // Live tracker: look for LOCATION#*#LATEST rows for the active rental.
+  const activeRental = rentalItems.find((r) => !r.endDate);
+  let liveTracker = null;
+  if (activeRental) {
+    const activeRentalId = activeRental.rentalId as string;
+    const trackerItem = items.find(
+      (i) =>
+        typeof i.SK === "string" &&
+        i.SK === `LOCATION#${activeRentalId}#LATEST`
+    );
+    if (trackerItem) {
+      const capturedAt = trackerItem.capturedAt as string;
+      const secondsAgo = Math.round(
+        (Date.now() - new Date(capturedAt).getTime()) / 1000
+      );
+      liveTracker = {
+        lat: trackerItem.lat,
+        lng: trackerItem.lng,
+        battery: trackerItem.batteryLevel ?? null,
+        captured_at: capturedAt,
+        received_at: trackerItem.receivedAt,
+        seconds_ago: secondsAgo,
+      };
+    }
+  }
 
   return NextResponse.json({
     id: profile.customerId,
@@ -293,6 +341,8 @@ export async function GET(
     created_at: profile.createdAt,
     photos,
     rentals,
+    driver_password_set: !!profile.driverPasswordHash,
+    live_tracker: liveTracker,
   });
 }
 

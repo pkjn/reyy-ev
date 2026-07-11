@@ -16,10 +16,10 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Run on everything except the login page, the login endpoint, and static
-  // assets. This also gates /api/* so the data routes aren't reachable without
-  // the auth cookie.
+  // Run on everything except the login page, the login endpoint, static
+  // assets, and driver routes. Driver routes have their own JWT auth and
+  // must bypass the site-password gate.
   matcher: [
-    "/((?!api/login|login|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api/login|api/driver|driver|login|_next/static|_next/image|favicon.ico).*)",
   ],
 };
