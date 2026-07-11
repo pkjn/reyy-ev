@@ -1,0 +1,75 @@
+name: Build Driver Android APK
+
+# Builds a debug APK of the Expo driver app (driver-app/) on manual dispatch and
+# on pushes to main that touch the app. The APK is uploaded as a workflow
+# artifact you can download and sideload onto a phone (matches the "sideloaded
+# APK, not Play Store" distribution plan). This mirrors rey-fin-client-app's
+# android.yml, but that app is Capacitor with a committed android/ project — this
+# one is Expo, so we prebuild the native project fresh before the Gradle build.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "driver-app/**"
+      - ".github/workflows/driver-android.yml"
+  workflow_dispatch:
+
+# The deployed backend the APK talks to. app.json already hardcodes the
+# production URL; set a repository variable named DRIVER_API_BASE_URL
+# (Settings → Secrets and variables → Actions → Variables) to override it at
+# build time without editing app.json.
+env:
+  DRIVER_API_BASE_URL: ${{ vars.DRIVER_API_BASE_URL }}
+
+defaults:
+  run:
+    working-directory: driver-app
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: driver-app/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # Provides sdkmanager and accepts the SDK licenses so the Android Gradle
+      # Plugin can auto-download the compile SDK / build-tools that Expo SDK 56
+      # pins in the generated project (don't hardcode a platform version here —
+      # it's dictated by the Expo template, not us).
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Optional: repoint the app at a different backend without touching app.json.
+      - name: Override backend URL
+        if: env.DRIVER_API_BASE_URL != ''
+        run: |
+          node -e "const fs=require('fs');const a=JSON.parse(fs.readFileSync('app.json'));a.expo.extra=a.expo.extra||{};a.expo.extra.API_BASE_URL=process.env.DRIVER_API_BASE_URL;fs.writeFileSync('app.json',JSON.stringify(a,null,2));console.log('API_BASE_URL =>',a.expo.extra.API_BASE_URL)"
+
+      # android/ is gitignored, so generate it from app.json before building.
+      - name: Prebuild native Android project
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Build debug APK
+        run: |
+          chmod +x android/gradlew
+          cd android && ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: reyy-ev-driver-debug-apk
+          path: driver-app/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
