@@ -29,6 +29,20 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # ubuntu-latest only leaves ~14 GB free, and an Expo/RN Android build
+      # (Android SDK + node_modules + merged/stripped native .so libs) exhausts
+      # it — the stripDebugSymbols task fails with "No space left on device".
+      # Purge preinstalled toolchains we don't use to reclaim ~20+ GB first.
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: false
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
