@@ -109,6 +109,7 @@ Single-table DynamoDB. Every item shares this key shape:
 | Rental                | `CUSTOMER#<cid>`   | `RENTAL#<rid>`                        | `RENTALS`          | `<createdAt>#<rid>`    |
 | Rental ID uniqueness  | `RENTALID#<rid>`   | `UNIQUE`                              | —                  | —                      |
 | Payment               | `CUSTOMER#<cid>`   | `PAYMENT#<rid>#<paidOn>#<payId>`      | `RENTAL#<rid>`     | `<paidOn>#<payId>`     |
+| Document              | `DOC#<docId>`      | `PROFILE`                             | `DOCUMENTS`        | `<docDate>#<docId>`    |
 
 Why this layout:
 
@@ -116,6 +117,30 @@ Why this layout:
 - `GSI1PK = "CUSTOMERS" / "RENTALS"` lets us list each type without scanning.
 - `GSI1PK = RENTAL#<id>` collects payments per rental for the dashboard.
 - `RENTALID#<id>` is a global uniqueness marker so the same rental ID can never collide across customers.
+- `GSI1SK = <docDate>#<docId>` returns the document vault already in document-date order.
+
+## Documents & GST claims
+
+`/documents` is a standalone vault for bills, GST certificates, cheques, photos, signed papers — anything worth keeping a scan of. Documents don't link to customers or vehicles; they're found by category, party and date.
+
+Each document is one row with its scans inline as a `files` array (`fileId` + `s3Key`, objects under `documents/<docId>/`), so "one document, several pages" is a single read and a single delete. Files are uploaded straight to S3 via presigned PUT, same two-step flow as customer photos.
+
+GST tracking is deliberately light — a document records the total, the GST inside it, and whether that input credit has been claimed:
+
+```
+gstAmount > 0 and gstClaimed  → claimed, in return period gstClaimPeriod (YYYY-MM)
+gstAmount > 0 and !gstClaimed → still to claim
+gstAmount empty              → not a GST document, no claim badge
+```
+
+The page totals GST **on record / claimed / yet to claim** across the whole vault, filters by claim state, and breaks claimed credit down by return period. A claim needs a period, GST can't exceed the total, and clearing the GST amount off a claimed document clears the claim with it.
+
+| Route                                    | Purpose                                    |
+| ---------------------------------------- | ------------------------------------------ |
+| `GET/POST /api/documents`                | list the vault / file a new document       |
+| `GET/PATCH/DELETE /api/documents/<id>`   | read, edit or tick a claim / delete + scans |
+| `POST /api/documents/<id>/files`         | attach more scans                          |
+| `DELETE /api/documents/<id>/files/<fid>` | remove one scan                            |
 
 ## Rent-due math
 
