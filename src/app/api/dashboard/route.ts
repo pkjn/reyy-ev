@@ -12,7 +12,7 @@ import { computeRentalBalances, Rental, readPauses } from "@/lib/billing";
 //   * Due today — today is the last paid day; collect before EOD
 //   * Paid up   — still has paid days ahead
 export async function GET() {
-  const [custRes, rentRes] = await Promise.all([
+  const [custRes, rentRes, vehRes] = await Promise.all([
     ddb.send(
       new QueryCommand({
         TableName: TABLE_NAME,
@@ -27,6 +27,16 @@ export async function GET() {
         IndexName: "GSI1",
         KeyConditionExpression: "GSI1PK = :pk",
         ExpressionAttributeValues: { ":pk": "RENTALS" },
+      })
+    ),
+    // Fleet size only — COUNT keeps this off the item-read path.
+    ddb.send(
+      new QueryCommand({
+        TableName: TABLE_NAME,
+        IndexName: "GSI1",
+        KeyConditionExpression: "GSI1PK = :pk",
+        ExpressionAttributeValues: { ":pk": "VEHICLES" },
+        Select: "COUNT",
       })
     ),
   ]);
@@ -182,6 +192,7 @@ export async function GET() {
 
   return NextResponse.json({
     customer_count: customerById.size,
+    vehicle_count: vehRes.Count || 0,
     active_rentals: activeRentals,
     blocked_count: blockedItems.length,
     due_today_count: dueTodayItems.length,

@@ -36,6 +36,21 @@ const VEHICLES = [
   { number: "REYY-0008", make: "Dynamo Electric Bikes - X1", chassis: "R6VA014C0TL011354" },
   { number: "REYY-0009", make: "Dynamo Electric Bikes - X1", chassis: "R6VA014C0TL011345" },
   { number: "REYY-0010", make: "Dynamo Electric Bikes - X1", chassis: "R6VA014C0TL011359" },
+  { number: "REYY-0011", make: "Dynamo Electric Bikes - X1", chassis: "R6VA014C0TL078681" },
+  { number: "REYY-0012", make: "Dynamo Electric Bikes - X1", chassis: "R6VA014C0TL078539" },
+  { number: "REYY-0013", make: "Dynamo Electric Bikes - X1", chassis: "R6VA014C0TL078433" },
+  { number: "REYY-0014", make: "Dynamo Electric Bikes - X1", chassis: "R6VA014C0TL078364" },
+  { number: "REYY-0015", make: "Dynamo Electric Bikes - X1", chassis: "R6VA014C0TL078324" },
+  { number: "REYY-0016", make: "Dynamo Electric Bikes - X1", chassis: "R6VA014C0TL078171" },
+  { number: "REYY-0017", make: "Dynamo Electric Bikes - X1", chassis: "R6VA014C0TL078312" },
+  { number: "REYY-0018", make: "Dynamo Electric Bikes - X1", chassis: "R6VA014C0TL078313" },
+  { number: "REYY-0019", make: "Dynamo Electric Bikes - X1", chassis: "R6VA014C0TL078349" },
+  { number: "REYY-0020", make: "Dynamo Electric Bikes - X1", chassis: "R6VA014C0TL078281" },
+  { number: "REYY-0021", make: "Dynamo Electric Bikes - X1", chassis: "R6VA014C0TL078316" },
+  { number: "REYY-0022", make: "Dynamo Electric Bikes - X1", chassis: "R6VA014C0TL078346" },
+  { number: "REYY-0023", make: "Dynamo Electric Bikes - X1", chassis: "R6VA014C0TL078643" },
+  { number: "REYY-0024", make: "Dynamo Electric Bikes - X1", chassis: "R6VA014C0TL078323" },
+  { number: "REYY-0025", make: "Dynamo Electric Bikes - X1", chassis: "R6VA014C0TL078347" },
 ];
 
 const BATTERY_PROVIDER = "Battery Smart";

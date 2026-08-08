@@ -27,6 +27,7 @@ interface DepositEntry {
 
 interface DashboardData {
   customer_count: number;
+  vehicle_count: number;
   active_rentals: number;
   blocked_count: number;
   due_today_count: number;
@@ -116,14 +117,20 @@ export default function DashboardPage() {
             </p>
           )}
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <KpiCard
               label="Active rentals"
               value={String(data.active_rentals)}
             />
             <KpiCard
+              label="Vehicles"
+              value={String(data.vehicle_count)}
+              href="/vehicles"
+            />
+            <KpiCard
               label="Customers"
               value={String(data.customer_count)}
+              href="/customers"
             />
             <KpiCard
               label="Deposit pending"
@@ -141,10 +148,12 @@ function KpiCard({
   label,
   value,
   tone,
+  href,
 }: {
   label: string;
   value: string;
   tone?: "red" | "amber" | "emerald" | "sky";
+  href?: string;
 }) {
   const valueClass = {
     red: "text-red-700",
@@ -152,14 +161,23 @@ function KpiCard({
     emerald: "text-emerald-700",
     sky: "text-sky-700",
   }[tone || "emerald"];
-  return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4">
+  const body = (
+    <>
       <p className="text-xs text-gray-500 uppercase tracking-wide">{label}</p>
       <p className={`text-2xl font-bold mt-0.5 ${tone ? valueClass : "text-gray-900"}`}>
         {value}
       </p>
-    </div>
+    </>
   );
+  const box = "bg-white rounded-lg border border-gray-200 p-4";
+  if (href) {
+    return (
+      <Link href={href} className={`${box} block hover:border-emerald-300`}>
+        {body}
+      </Link>
+    );
+  }
+  return <div className={box}>{body}</div>;
 }
 
 function RentalList({
