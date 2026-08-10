@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import ddb, { TABLE_NAME } from "@/lib/db";
 import {
+  DeleteCommand,
   GetCommand,
   QueryCommand,
   UpdateCommand,
@@ -203,6 +204,26 @@ export async function PATCH(
       }),
     })
   );
+
+  // Best-effort cleanup: if the rental was just closed (end_date set), delete
+  // the live location row so it doesn't clutter the LOCATIONS GSI partition.
+  // Stale row is harmless (dashboard filters by active rental) — we just
+  // don't want it accumulating.
+  if (body.end_date && typeof body.end_date === "string") {
+    try {
+      await ddb.send(
+        new DeleteCommand({
+          TableName: TABLE_NAME,
+          Key: {
+            PK: `CUSTOMER#${customerId}`,
+            SK: `LOCATION#${rentalId}#LATEST`,
+          },
+        })
+      );
+    } catch (err) {
+      console.warn("failed to delete location row on rental close:", err);
+    }
+  }
 
   return NextResponse.json({ ok: true });
 }

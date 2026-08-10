@@ -229,6 +229,24 @@ export async function GET(
     refundsByRental.set(r.rentalId, list);
   }
 
+  const kmsLogItems = items.filter(
+    (i) => typeof i.SK === "string" && i.SK.startsWith("KMSLOG#")
+  );
+  const kmsLogs = kmsLogItems.map((k) => ({
+    id: (k.kmsLogId as string) || (k.SK as string).split("#")[2] || "",
+    rentalId: k.rentalId as string,
+    scootyLabel: (k.scootyLabel as string) || "",
+    kms: (k.kms as number) || 0,
+    date: k.date as string,
+    note: (k.note as string) || null,
+    createdAt: k.createdAt as string,
+  }));
+  const kmsLogsByRental = new Map<string, typeof kmsLogs>();
+  for (const k of kmsLogs) {
+    const list = kmsLogsByRental.get(k.rentalId) || [];
+    list.push(k);
+    kmsLogsByRental.set(k.rentalId, list);
+  }
   const locationLogItems = items.filter(
     (i) => typeof i.SK === "string" && i.SK.startsWith("LOCATION#")
   );
@@ -274,6 +292,9 @@ export async function GET(
       const deposits = (depositsByRental.get(rental.id) || []).sort((a, b) =>
         a.date < b.date ? 1 : a.date > b.date ? -1 : 0
       );
+      const kmsLogs = (kmsLogsByRental.get(rental.id) || []).sort((a, b) =>
+        a.createdAt < b.createdAt ? 1 : -1
+      );
       const locationLogs = (locationsByRental.get(rental.id) || []).sort((a, b) =>
         a.timestamp < b.timestamp ? 1 : -1
       );
@@ -294,7 +315,7 @@ export async function GET(
               },
             ];
       const balances = computeRentalBalances(rental, payments);
-      return { ...rental, payments, refunds, deposits, scooties, balances, locationLogs };
+      return { ...rental, payments, refunds, deposits, scooties, balances, kmsLogs, locationLogs };
     })
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 

@@ -60,7 +60,7 @@ export default function DashboardPage() {
         <p className="text-gray-500">Loading...</p>
       ) : (
         <div className="space-y-5">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <KpiCard
               label="Blocked"
               value={String(data.blocked_count)}

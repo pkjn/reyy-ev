@@ -1,10 +1,10 @@
 "use client";
 
-import { use, useEffect, useState, useCallback } from "react";
+import { use, useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatINR, RATE_UNITS, RateUnit } from "@/lib/billing";
-import { ID_TYPES, IdType, ID_TYPE_LABELS } from "@/lib/idTypes";
+import { ID_TYPES, IdType, ID_TYPE_LABELS, KmsLog, LocationLog } from "@/lib/idTypes";
 import { Vehicle } from "@/lib/vehicles";
 
 interface AccountOption {
@@ -70,7 +70,9 @@ interface RentalView {
   payments: Payment[];
   refunds: Refund[];
   deposits: Deposit[];
+  kmsLogs: Omit<KmsLog, "customerId">[];
   scooties: { label: string; from: string; note: string | null }[];
+  locationLogs?: LocationLog[];
   pauses: { start: string; end: string | null }[];
   balances: {
     daysBilled: number;
@@ -106,7 +108,7 @@ interface CustomerDetail {
   photos: Photo[];
   rentals: RentalView[];
   driver_password_set: boolean;
-  live_tracker: {
+  live_tracker?: {
     lat: number;
     lng: number;
     battery: number | null;
@@ -114,6 +116,42 @@ interface CustomerDetail {
     received_at: string;
     seconds_ago: number;
   } | null;
+}
+
+function useLeaflet() {
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if ((window as unknown as { L: unknown }).L) {
+      setLoaded(true);
+      return;
+    }
+
+    const existingScript = document.getElementById("leaflet-js");
+    if (existingScript) {
+      const handleLoad = () => setLoaded(true);
+      existingScript.addEventListener("load", handleLoad);
+      return () => {
+        existingScript.removeEventListener("load", handleLoad);
+      };
+    }
+
+    // Load CSS
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+    document.head.appendChild(link);
+
+    // Load JS
+    const script = document.createElement("script");
+    script.id = "leaflet-js";
+    script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+    script.onload = () => setLoaded(true);
+    document.body.appendChild(script);
+  }, []);
+
+  return loaded;
 }
 
 // Turn a saved house location (a pasted Maps URL, or coordinates / free text)
@@ -1088,9 +1126,100 @@ function RentalCard({
   const [showRefundForm, setShowRefundForm] = useState(false);
   const [showSwapForm, setShowSwapForm] = useState(false);
   const [showDepositForm, setShowDepositForm] = useState(false);
+  const [showKmsForm, setShowKmsForm] = useState(false);
+  const [pulling, setPulling] = useState(false);
   const isActive = rental.balances.status === "active";
+
+  const leafletLoaded = useLeaflet();
+  const mapRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (!leafletLoaded || !rental.locationLogs || rental.locationLogs.length === 0) return;
+    const L = (window as any).L;
+    if (!L) return;
+
+    const containerId = `map-${rental.id}`;
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    // Initialize map if not yet done
+    if (!mapRef.current) {
+      const latestLog = rental.locationLogs[0];
+      const map = L.map(containerId).setView([latestLog.latitude, latestLog.longitude], 14);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '© OpenStreetMap contributors',
+      }).addTo(map);
+      mapRef.current = map;
+    }
+
+    // Clear existing transient markers/polylines from map
+    mapRef.current.eachLayer((layer: any) => {
+      if (layer instanceof L.Marker || layer instanceof L.Polyline) {
+        mapRef.current.removeLayer(layer);
+      }
+    });
+
+    const sortedLogs = [...rental.locationLogs].sort(
+      (a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime()
+    );
+
+    const latlngs = sortedLogs.map((log) => [log.latitude ?? 0, log.longitude ?? 0]);
+
+    // Draw historical polyline path
+    if (latlngs.length > 1) {
+      L.polyline(latlngs, { color: "#0ea5e9", weight: 3, opacity: 0.8 }).addTo(mapRef.current);
+    }
+
+    // Add markers with custom style DivIcons
+    sortedLogs.forEach((log, idx) => {
+      const isLatest = idx === sortedLogs.length - 1;
+      const marker = L.marker([log.latitude ?? 0, log.longitude ?? 0], {
+        icon: L.divIcon({
+          className: "custom-leaflet-div-icon",
+          html: isLatest
+            ? `<div style="position: relative; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px;">
+                <span style="position: absolute; width: 100%; height: 100%; border-radius: 50%; background-color: #38bdf8; opacity: 0.75; transform: scale(1); animation: leaflet-ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;"></span>
+                <span style="position: relative; width: 12px; height: 12px; border-radius: 50%; background-color: #0284c7; border: 2px solid white;"></span>
+               </div>`
+            : `<div style="width: 8px; height: 8px; border-radius: 50%; background-color: #64748b; border: 1.5px solid white;"></div>`,
+          iconSize: isLatest ? [24, 24] : [8, 8],
+          iconAnchor: isLatest ? [12, 12] : [4, 4],
+        }),
+      }).addTo(mapRef.current);
+
+      marker.bindPopup(
+        `<div style="font-family: sans-serif; font-size: 12px; color: #1e293b;">` +
+        `<strong>${isLatest ? "Current Location" : "History Pin"}</strong><br/>` +
+        `Time: ${log.timestamp && !isNaN(new Date(log.timestamp).getTime()) ? new Date(log.timestamp).toLocaleTimeString() : "Unknown"}<br/>` +
+        `Date: ${log.timestamp && !isNaN(new Date(log.timestamp).getTime()) ? new Date(log.timestamp).toLocaleDateString() : "Unknown"}<br/>` +
+        `${log.batteryLevel !== undefined && log.batteryLevel !== null ? "Battery: " + Math.round(log.batteryLevel) + "%" : ""}` +
+        `</div>`
+      );
+    });
+
+    // Adjust view to fit all coords in history
+    if (latlngs.length > 1) {
+      mapRef.current.fitBounds(L.latLngBounds(latlngs), { padding: [30, 30] });
+    } else if (latlngs.length === 1) {
+      mapRef.current.setView(latlngs[0], 14);
+    }
+  }, [leafletLoaded, rental.locationLogs, rental.id]);
+
+  // Cleanup map on final component unmount
+  useEffect(() => {
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
+    };
+  }, []);
+
   const { coverageStatus, daysRemaining, paidThroughDate, paused, pausedSince } =
     rental.balances;
+
+  const latestKms = rental.kmsLogs && rental.kmsLogs.length > 0 ? rental.kmsLogs[0].kms : null;
+  const odometerValue = latestKms !== null ? `${latestKms.toLocaleString("en-IN")} km` : "—";
 
   const totalRefunded = rental.refunds.reduce((s, r) => s + r.amount, 0);
   // The deposit may be collected in installments — sum what's actually in.
@@ -1437,6 +1566,125 @@ function RentalCard({
             onChange();
           }}
         />
+      )}
+
+      {showKmsForm && (
+        <KmsForm
+          rentalId={rental.id}
+          customerId={customerId}
+          onSaved={() => {
+            setShowKmsForm(false);
+            onChange();
+          }}
+          onCancel={() => setShowKmsForm(false)}
+        />
+      )}
+
+      {rental.kmsLogs && rental.kmsLogs.length > 0 ? (
+        <div className="mt-4 border-t border-gray-100 pt-3">
+          <div className="text-xs uppercase tracking-wide text-gray-500 mb-2">
+            Odometer History
+          </div>
+          <ul className="space-y-1 text-sm text-gray-700 max-h-36 overflow-y-auto font-mono">
+            {rental.kmsLogs.map((log) => (
+              <li key={log.id} className="flex justify-between py-1 border-b border-gray-50 last:border-0">
+                <span className="min-w-0">
+                  <span className="font-semibold text-gray-800">{log.kms.toLocaleString("en-IN")} km</span>
+                  <span className="text-gray-400 mx-2">·</span>
+                  <span className="text-gray-500">{log.date}</span>
+                  <span className="ml-2 inline-block bg-gray-100 text-gray-600 text-[10px] px-1.5 py-0.5 rounded font-medium">
+                    {log.scootyLabel}
+                  </span>
+                  {log.note ? ` · ${log.note}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <div className="mt-4 border-t border-gray-100 pt-3">
+          <div className="text-xs uppercase tracking-wide text-gray-500 mb-2">Odometer History</div>
+          <p className="text-sm text-gray-500 italic">No odometer readings logged yet.</p>
+        </div>
+      )}
+
+      {rental.locationLogs && rental.locationLogs.length > 0 ? (
+        <div className="mt-4 border-t border-gray-100 pt-3">
+          <style>{`
+            @keyframes leaflet-ping {
+              0% {
+                transform: scale(0.5);
+                opacity: 1;
+              }
+              100% {
+                transform: scale(2.5);
+                opacity: 0;
+              }
+            }
+          `}</style>
+          <div className="text-xs uppercase tracking-wide text-gray-500 mb-2">
+            Latest Known Location
+          </div>
+          {/* Leaflet map container */}
+          <div
+            id={`map-${rental.id}`}
+            className="h-64 w-full rounded-xl mt-1 mb-3 overflow-hidden shadow-inner border border-gray-200 z-0"
+          />
+          <ul className="space-y-1 text-sm text-gray-700 max-h-40 overflow-y-auto font-mono">
+            {rental.locationLogs.map((log: any) => {
+              const lat = log.latitude ?? 0;
+              const lng = log.longitude ?? 0;
+              return (
+              <li
+                key={log.id}
+                onClick={() => {
+                  if (mapRef.current) {
+                    mapRef.current.setView([lat, lng], 16);
+                  }
+                }}
+                className="flex justify-between py-1.5 border-b border-gray-50 last:border-0 hover:bg-slate-50 cursor-pointer px-2 rounded transition"
+                title="Click to focus map here"
+              >
+                <span className="min-w-0 flex items-center">
+                  <span className="font-semibold text-sky-600 hover:underline">
+                    {lat.toFixed(6)}, {lng.toFixed(6)}
+                  </span>
+                  <span className="text-gray-400 mx-2">·</span>
+                  <span className="text-gray-500 text-xs">
+                    {log.timestamp && !isNaN(new Date(log.timestamp).getTime()) ? new Date(log.timestamp).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                    }) : "Unknown time"}{" "}
+                    ({log.timestamp && !isNaN(new Date(log.timestamp).getTime()) ? new Date(log.timestamp).toLocaleDateString() : "Unknown date"})
+                  </span>
+                  {log.batteryLevel !== undefined && log.batteryLevel !== null && (
+                    <>
+                      <span className="text-gray-400 mx-2">·</span>
+                      <span className="text-gray-500 text-[10px]">🔋 {Math.round(log.batteryLevel)}%</span>
+                    </>
+                  )}
+                </span>
+                <a
+                  href={`https://www.google.com/maps/place/${lat},${lng}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-slate-400 hover:text-sky-600 transition ml-2 text-xs flex items-center"
+                  title="Open in Google Maps"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  🗺️ Maps
+                </a>
+              </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : (
+        <div className="mt-4 border-t border-gray-100 pt-3">
+          <div className="text-xs uppercase tracking-wide text-gray-500 mb-2">Latest Known Location</div>
+          <p className="text-sm text-gray-500 italic">No location history available for this rental.</p>
+        </div>
       )}
 
       {txUnits.length > 0 && (
@@ -2202,6 +2450,121 @@ function SwapForm({
   );
 }
 
+function KmsForm({
+  rentalId,
+  customerId,
+  onSaved,
+  onCancel,
+}: {
+  rentalId: string;
+  customerId: string;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [kms, setKms] = useState("");
+  const [date, setDate] = useState(today);
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const kmsNum = parseInt(kms, 10);
+    if (isNaN(kmsNum) || kmsNum < 0) {
+      setError("Enter a non-negative odometer reading.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/rentals/${rentalId}/kms`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customer_id: customerId,
+          kms: kmsNum,
+          date,
+          note: note.trim() || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setError(body.error || "Failed to log odometer.");
+        return;
+      }
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form
+      onSubmit={submit}
+      className="mt-3 bg-orange-50/60 border border-orange-200 rounded-lg p-3 space-y-2"
+    >
+      <div className="text-xs font-semibold text-orange-800">
+        Log Odometer Reading (km)
+      </div>
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-800 text-xs rounded-lg p-2">
+          {error}
+        </div>
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <Field label="Odometer (km) *">
+          <input
+            type="number"
+            min="0"
+            step="1"
+            required
+            value={kms}
+            onChange={(e) => setKms(e.target.value)}
+            placeholder="e.g. 15420"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          />
+        </Field>
+        <Field label="Date *">
+          <input
+            type="date"
+            required
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          />
+        </Field>
+        <Field label="Note">
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="e.g. regular checkup"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          />
+        </Field>
+      </div>
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={saving}
+          className="bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-700 disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Record Odometer"}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={saving}
+          className="text-sm text-gray-600 hover:text-gray-800 px-4 py-2"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+
 interface IdDraft {
   id?: string;
   type: IdType;
@@ -2395,6 +2758,8 @@ function toDraft(ids: CustomerIdView[]): IdDraft[] {
     createdAt: r.createdAt,
   }));
 }
+
+// ---------------------------------------------------------------------------
 
 function DriverLoginSection({
   customerId,

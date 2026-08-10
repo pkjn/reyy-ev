@@ -61,11 +61,20 @@ export async function POST(req: Request) {
     advance_screenshot_filename?: string;
     advance_screenshot_type?: string;
     notes?: string;
+    start_kms?: number;
   };
 
   const customerId = (body.customer_id || "").trim();
   const scootyLabel = (body.scooty_label || "").trim();
   const startDate = (body.start_date || "").trim();
+  const startKms = typeof body.start_kms === "number" ? body.start_kms : undefined;
+
+  if (startKms !== undefined && (typeof startKms !== "number" || startKms < 0)) {
+    return NextResponse.json(
+      { error: "start_kms must be a non-negative number" },
+      { status: 400 }
+    );
+  }
 
   if (!customerId) {
     return NextResponse.json({ error: "customer_id is required" }, { status: 400 });
@@ -224,6 +233,27 @@ export async function POST(req: Request) {
       },
     },
   ];
+
+  if (startKms !== undefined) {
+    const kmsLogId = uuid();
+    transactItems.push({
+      Put: {
+        TableName: TABLE_NAME,
+        Item: {
+          PK: `CUSTOMER#${customerId}`,
+          SK: `KMSLOG#${rentalId}#${startDate}#${kmsLogId}`,
+          kmsLogId,
+          rentalId,
+          customerId,
+          scootyLabel,
+          kms: startKms,
+          date: startDate,
+          note: "Starting odometer reading",
+          createdAt: now,
+        },
+      },
+    });
+  }
 
   // Record whatever deposit is collected now as cash into its account. The
   // rental's securityDeposit/refundableDeposit are the agreed *targets*; a

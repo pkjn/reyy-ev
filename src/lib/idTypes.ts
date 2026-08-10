@@ -47,6 +47,17 @@ export function photoCategoryLabel(c: string): string {
   return found ? found.label : c;
 }
 
+export interface KmsLog {
+  id: string;
+  rentalId: string;
+  customerId: string;
+  scootyLabel: string;
+  kms: number;
+  date: string; // YYYY-MM-DD
+  note: string | null;
+  createdAt: string;
+}
+
 export interface LocationLog {
   id: string;
   rentalId: string;
